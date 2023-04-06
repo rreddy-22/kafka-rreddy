@@ -77,8 +77,10 @@ public class AssignmentMemberSpec {
     }
 
     public AssignmentMemberSpec(
+
         Optional<String> instanceId,
         Optional<String> rackId,
+
         Collection<Uuid> subscribedTopicIds,
         Map<Uuid, Set<Integer>> assignedPartitions
     ) {

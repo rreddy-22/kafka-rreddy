@@ -58,6 +58,6 @@ public class MemberAssignment {
 
     @Override
     public String toString() {
-        return "MemberAssignment(targetPartitions=" + targetPartitions + ')';
+        return "MemberAssignment ( Assignment per topic Id = " + targetPartitions + ')';
     }
 }
