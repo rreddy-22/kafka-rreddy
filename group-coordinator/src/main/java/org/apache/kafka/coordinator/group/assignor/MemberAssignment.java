@@ -36,7 +36,7 @@ public class MemberAssignment {
         this.assignmentPerTopic = assignmentPerTopic;
     }
 
-    public Map<Uuid, Set<Integer>> getAssignmentPerTopic() {
+    public Map<Uuid, Set<Integer>> assignmentPerTopic() {
         return this.assignmentPerTopic;
     }
 

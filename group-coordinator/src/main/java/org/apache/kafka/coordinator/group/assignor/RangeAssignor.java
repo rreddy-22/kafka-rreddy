@@ -57,7 +57,7 @@ import static java.lang.Math.min;
  * </p>
  *
  */
-public class ServerSideStickyRangeAssignor implements PartitionAssignor {
+public class RangeAssignor implements PartitionAssignor {
 
     public static final String RANGE_ASSIGNOR_NAME = "range";
 

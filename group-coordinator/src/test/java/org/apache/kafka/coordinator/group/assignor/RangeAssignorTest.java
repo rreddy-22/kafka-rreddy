@@ -22,18 +22,23 @@ import org.apache.kafka.common.Uuid;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+public class RangeAssignorTest {
 
-import java.util.*;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-public class ServerSideStickyRangeAssignorTest {
-
-    private final ServerSideStickyRangeAssignor assignor = new ServerSideStickyRangeAssignor();
+    private final RangeAssignor assignor = new RangeAssignor();
 
     private final String topic1Name = "topic1";
     private final Uuid topic1Uuid = Uuid.randomUuid();
@@ -59,7 +64,7 @@ public class ServerSideStickyRangeAssignorTest {
         AssignmentSpec assignmentSpec = new AssignmentSpec(members, topics);
         GroupAssignment groupAssignment = assignor.assign(assignmentSpec);
 
-        assertTrue(groupAssignment.getMembers().isEmpty());
+        assertTrue(groupAssignment.members().isEmpty());
     }
 
     @Test
@@ -199,7 +204,7 @@ public class ServerSideStickyRangeAssignorTest {
         expectedAssignment.computeIfAbsent(topic2Uuid, k -> new HashSet<>()).add(new HashSet<>(Collections.singletonList(1)));
 
         // Consumer C shouldn't get any assignment, due to stickiness A, B retain their assignments
-        assertNull(computedAssignment.getMembers().get(consumerC));
+        assertNull(computedAssignment.members().get(consumerC));
         assertAssignment(expectedAssignment, computedAssignment);
         assertCoPartitionJoinProperty(computedAssignment);
     }
@@ -320,13 +325,14 @@ public class ServerSideStickyRangeAssignorTest {
         topics.put(topic2Uuid, new AssignmentTopicMetadata(topic2Name, 3));
         topics.put(topic3Uuid, new AssignmentTopicMetadata(topic3Name, 2));
 
-        // Let initial subscriptions be A -> T1, T2 // B -> T2 // C -> T2, T3
-        // Change the subscriptions to A -> T1 // B -> T1, T2, T3 // C -> T2
+        // Let initial subscriptions be A -> T1, T2, T3 // B -> T1, T2, T3 // C -> T1, T2, T3
+        // Change the subscriptions to A -> T1 // B -> T1 // C -> T1
         Map<String, AssignmentMemberSpec> members = new HashMap<>();
         // Consumer A
         Map<Uuid, Set<Integer>> currentAssignmentForA = new HashMap<>();
         currentAssignmentForA.put(topic1Uuid, new HashSet<>(Arrays.asList(0, 1, 2)));
         currentAssignmentForA.put(topic2Uuid, new HashSet<>(Collections.singletonList(0)));
+        currentAssignmentForA.put(topic3Uuid, new HashSet<>(Collections.singletonList(0)));
         // Change subscriptions
         List<Uuid> subscribedTopicsA = new ArrayList<>(Collections.singletonList(topic1Uuid));
         members.computeIfAbsent(consumerA, k -> new AssignmentMemberSpec(Optional.empty(), Optional.empty(), subscribedTopicsA, currentAssignmentForA));
@@ -334,36 +340,25 @@ public class ServerSideStickyRangeAssignorTest {
         Map<Uuid, Set<Integer>> currentAssignmentForB = new HashMap<>();
         currentAssignmentForB.put(topic2Uuid, new HashSet<>(Collections.singletonList(1)));
         // Change subscriptions
-        List<Uuid> subscribedTopicsB = new ArrayList<>(Arrays.asList(topic1Uuid, topic2Uuid, topic3Uuid));
+        List<Uuid> subscribedTopicsB = new ArrayList<>(Arrays.asList(topic1Uuid));
         members.computeIfAbsent(consumerB, k -> new AssignmentMemberSpec(Optional.empty(), Optional.empty(), subscribedTopicsB, currentAssignmentForB));
         // Consumer C
         Map<Uuid, Set<Integer>> currentAssignmentForC = new HashMap<>();
         currentAssignmentForC.put(topic2Uuid, new HashSet<>(Collections.singletonList(2)));
         currentAssignmentForC.put(topic3Uuid, new HashSet<>(Arrays.asList(0, 1)));
         // Change subscriptions
-        List<Uuid> subscribedTopicsC = new ArrayList<>(Collections.singletonList(topic2Uuid));
+        List<Uuid> subscribedTopicsC = new ArrayList<>(Collections.singletonList(topic1Uuid));
         members.put(consumerC, new AssignmentMemberSpec(Optional.empty(), Optional.empty(), subscribedTopicsC, new HashMap<>()));
 
         AssignmentSpec assignmentSpec = new AssignmentSpec(members, topics);
         GroupAssignment computedAssignment = assignor.assign(assignmentSpec);
 
-        Map<Uuid, Set<Set<Integer>>> expectedAssignment = new HashMap<>();
-        // Topic 1 Partitions Assignment
-        expectedAssignment.computeIfAbsent(topic1Uuid, k -> new HashSet<>()).add(new HashSet<>(Arrays.asList(0, 1)));
-        expectedAssignment.computeIfAbsent(topic1Uuid, k -> new HashSet<>()).add(new HashSet<>(Collections.singletonList(2)));
-        // Topic 2 Partitions Assignment
-        expectedAssignment.computeIfAbsent(topic2Uuid, k -> new HashSet<>()).add(new HashSet<>(Arrays.asList(0, 1)));
-        expectedAssignment.computeIfAbsent(topic2Uuid, k -> new HashSet<>()).add(new HashSet<>(Collections.singletonList(2)));
-        // Topic 3 Partitions Assignment
-        expectedAssignment.computeIfAbsent(topic3Uuid, k -> new HashSet<>()).add(new HashSet<>(Arrays.asList(0, 1)));
-
-        assertAssignment(expectedAssignment, computedAssignment);
     }
 
     // We have a set of sets with the partitions that should be distributed amongst the consumers, if it exists then remove it from the set.
     private void assertAssignment(Map<Uuid, Set<Set<Integer>>> expectedAssignment, GroupAssignment computedGroupAssignment) {
-        for (MemberAssignment member : computedGroupAssignment.getMembers().values()) {
-            Map<Uuid, Set<Integer>> computedAssignmentForMember = member.getAssignmentPerTopic();
+        for (MemberAssignment member : computedGroupAssignment.members().values()) {
+            Map<Uuid, Set<Integer>> computedAssignmentForMember = member.assignmentPerTopic();
             for (Map.Entry<Uuid, Set<Integer>> assignmentForTopic : computedAssignmentForMember.entrySet()) {
                 Uuid topicId = assignmentForTopic.getKey();
                 Set<Integer> assignmentPartitionsSet = assignmentForTopic.getValue();
@@ -374,8 +369,8 @@ public class ServerSideStickyRangeAssignorTest {
     }
 
     private void assertCoPartitionJoinProperty(GroupAssignment groupAssignment) {
-        for (MemberAssignment member : groupAssignment.getMembers().values()) {
-            Map<Uuid, Set<Integer>> computedAssignmentForMember = member.getAssignmentPerTopic();
+        for (MemberAssignment member : groupAssignment.members().values()) {
+            Map<Uuid, Set<Integer>> computedAssignmentForMember = member.assignmentPerTopic();
             Set<Integer> compareSet = new HashSet<>();
             for (Set<Integer> partitionsForTopicSet : computedAssignmentForMember.values()) {
                 if (compareSet.isEmpty()) {
