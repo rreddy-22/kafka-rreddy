@@ -58,6 +58,6 @@ public class MemberAssignment {
 
     @Override
     public String toString() {
-        return "MemberAssignment (Target partitions = " + targetPartitions + ')';
+        return "MemberAssignment(targetPartitions=" + targetPartitions + ')';
     }
 }
