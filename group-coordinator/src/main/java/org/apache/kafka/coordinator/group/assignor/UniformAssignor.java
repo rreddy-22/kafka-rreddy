@@ -22,11 +22,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 public class UniformAssignor implements PartitionAssignor {
 
@@ -47,7 +44,7 @@ public class UniformAssignor implements PartitionAssignor {
         } else {
             assignmentBuilder = new GeneralAssignmentBuilder(assignmentSpec);
         }
-        return assignmentInCorrectFormat(assignmentSpec.members.keySet(), assignmentBuilder.build());
+        return assignmentBuilder.build();
     }
 
     private boolean allSubscriptionsEqual(Map<String, AssignmentMemberSpec> members) {
@@ -61,26 +58,7 @@ public class UniformAssignor implements PartitionAssignor {
         }
         return areAllSubscriptionsEqual;
     }
-    protected GroupAssignment assignmentInCorrectFormat(Set<String> membersKeySet, Map<String, List<RackAwareTopicIdPartition>> computedAssignment) {
-        Map<String, MemberAssignment> members = new HashMap<>();
-        if (computedAssignment.isEmpty()) {
-            return new GroupAssignment(members);
-        }
-        for (String member : membersKeySet) {
-            List<RackAwareTopicIdPartition> assignment = computedAssignment.get(member);
-            Map<Uuid, Set<Integer>> topicToSetOfPartitions = new HashMap<>();
-            for (RackAwareTopicIdPartition topicIdPartition : assignment) {
-                Uuid topicId = topicIdPartition.topicId();
-                Integer partition = topicIdPartition.partition();
-                topicToSetOfPartitions.computeIfAbsent(topicId, k -> new HashSet<>());
-                topicToSetOfPartitions.get(topicId).add(partition);
-            }
-            members.put(member, new MemberAssignment(topicToSetOfPartitions));
-        }
-        GroupAssignment finalAssignment = new GroupAssignment(members);
-        System.out.println("Final group assignment is " + finalAssignment);
-        return finalAssignment;
-    }
+
     protected static abstract class AbstractAssignmentBuilder {
 
         final Map<Uuid, AssignmentTopicMetadata> metadataPerTopic;
@@ -96,7 +74,7 @@ public class UniformAssignor implements PartitionAssignor {
          *
          * @return Map from each member to the list of partitions assigned to them.
          */
-        abstract Map<String, List<RackAwareTopicIdPartition>> build();
+        abstract GroupAssignment build();
 
         protected List<RackAwareTopicIdPartition> getAllTopicPartitions(List<Uuid> listAllTopics) {
             List<RackAwareTopicIdPartition> allPartitions = new ArrayList<>();

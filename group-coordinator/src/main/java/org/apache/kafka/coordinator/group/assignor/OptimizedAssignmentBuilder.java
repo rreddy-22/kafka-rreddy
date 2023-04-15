@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -50,7 +51,6 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
         // Subscription list is same for all consumers
     private final Collection<Uuid> validSubscriptionList;
 
-    private Integer totalValidPartitionsCount;
     private final int minQuota;
         // the expected number of members receiving more than minQuota partitions (zero when minQuota == maxQuota)
     private int expectedNumMembersWithExtraPartition;
@@ -80,7 +80,7 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
             }
         }
         System.out.println("subscribed topics list is " + validSubscriptionList);
-        totalValidPartitionsCount = 0;
+        Integer totalValidPartitionsCount = 0;
         for (Uuid topicId : validSubscriptionList) {
             totalValidPartitionsCount += assignmentSpec.topics.get(topicId).numPartitions;
         }
@@ -96,14 +96,14 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
     }
 
     @Override
-    Map<String, List<RackAwareTopicIdPartition>> build() {
+    GroupAssignment build() {
         if (log.isDebugEnabled()) {
             log.debug("Performing constrained assign with MetadataPerTopic: {}, metadataPerMember: {}.",
                     metadataPerMember, metadataPerTopic);
         }
         if (validSubscriptionList.isEmpty()) {
             log.info("Valid subscriptions list is empty, returning empty assignment");
-            return new HashMap<>();
+            return new GroupAssignment(new HashMap<>());
         }
         List<RackAwareTopicIdPartition> allAssignedStickyPartitions = getAssignedStickyPartitions();
         System.out.println("All assigned sticky Partitions = " + allAssignedStickyPartitions);
@@ -124,7 +124,7 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
         allocateUnassignedPartitions();
         System.out.println("After filling the unfilled ones with available partitions the assignment is " + fullAssignment);
         // assign the assignedStickyPartitions, do computeIfAbsent since unfilled doesn't have all the consumers
-        return fullAssignment;
+        return assignmentInCorrectFormat(metadataPerMember.keySet(), fullAssignment);
     }
 
     // Keep the partitions in the assignment only if they are still part of the new topic metadata and the consumers subscriptions.
@@ -195,8 +195,8 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
         return totalRemaining == unassignedPartitions.size();
     }
 
-    // The unfilled map has consumers mapped to the remaining partitions number = max allocation to this consumer
-    // The algorithm below assigns each consumer partitions in a round-robin fashion up to its max limit
+    // The unfilled map has consumers mapped to the remaining partitions number = max allocation to this consumer.
+    // The algorithm below assigns each consumer partitions in a round-robin fashion up to its max limit.
     private void allocateUnassignedPartitions() {
         // Since the map doesn't guarantee order we need a list of consumerIds to map each consumer to a particular index
         List<String> consumerIds = new ArrayList<>(unfilledConsumers.keySet());
@@ -268,5 +268,25 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
             }
         }
         return unassignedPartitions;
+    }
+    protected GroupAssignment assignmentInCorrectFormat(Set<String> membersKeySet, Map<String, List<RackAwareTopicIdPartition>> computedAssignment) {
+        Map<String, MemberAssignment> members = new HashMap<>();
+        if (computedAssignment.isEmpty()) {
+            return new GroupAssignment(members);
+        }
+        for (String member : membersKeySet) {
+            List<RackAwareTopicIdPartition> assignment = computedAssignment.get(member);
+            Map<Uuid, Set<Integer>> topicToSetOfPartitions = new HashMap<>();
+            for (RackAwareTopicIdPartition topicIdPartition : assignment) {
+                Uuid topicId = topicIdPartition.topicId();
+                Integer partition = topicIdPartition.partition();
+                topicToSetOfPartitions.computeIfAbsent(topicId, k -> new HashSet<>());
+                topicToSetOfPartitions.get(topicId).add(partition);
+            }
+            members.put(member, new MemberAssignment(topicToSetOfPartitions));
+        }
+        GroupAssignment finalAssignment = new GroupAssignment(members);
+        System.out.println("Final group assignment is " + finalAssignment);
+        return finalAssignment;
     }
 }
