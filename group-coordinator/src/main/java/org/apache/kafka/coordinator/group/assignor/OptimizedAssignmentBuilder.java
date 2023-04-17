@@ -27,6 +27,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +52,8 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
         // Subscription list is same for all consumers
     private final Collection<Uuid> validSubscriptionList;
 
+    private Integer totalValidPartitionsCount;
+
     private final int minQuota;
         // the expected number of members receiving more than minQuota partitions (zero when minQuota == maxQuota)
     private int expectedNumMembersWithExtraPartition;
@@ -70,19 +73,20 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
         super(assignmentSpec);
 
         validSubscriptionList = new ArrayList<>();
-        List<Uuid> givenSubscriptionList = assignmentSpec.members.values().iterator().next().subscribedTopics;
+
+        Collection<Uuid> givenSubscriptionList = assignmentSpec.members().values().iterator().next().subscribedTopicIds();
         // Only add topicIds from the subscription list that are still present in the topicMetadata
         for (Uuid topicId : givenSubscriptionList) {
-            if (assignmentSpec.topics.containsKey(topicId)) {
+            if (assignmentSpec.topics().containsKey(topicId)) {
                 validSubscriptionList.add(topicId);
             } else {
                 log.info("The subscribed topic : " + topicId + " doesn't exist in the topic metadata ");
             }
         }
         System.out.println("subscribed topics list is " + validSubscriptionList);
-        Integer totalValidPartitionsCount = 0;
+        totalValidPartitionsCount = 0;
         for (Uuid topicId : validSubscriptionList) {
-            totalValidPartitionsCount += assignmentSpec.topics.get(topicId).numPartitions;
+            totalValidPartitionsCount += assignmentSpec.topics().get(topicId).numPartitions();
         }
         System.out.println("total valid partitions count " + totalValidPartitionsCount);
         int numberOfConsumers = metadataPerMember.size();
@@ -130,7 +134,7 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
     // Keep the partitions in the assignment only if they are still part of the new topic metadata and the consumers subscriptions.
     private List<RackAwareTopicIdPartition> getValidCurrentAssignment(AssignmentMemberSpec assignmentMemberSpec) {
         List<RackAwareTopicIdPartition> validCurrentAssignmentList = new ArrayList<>();
-        for (Map.Entry<Uuid, Set<Integer>> currentAssignment : assignmentMemberSpec.currentAssignmentPerTopic.entrySet()) {
+        for (Map.Entry<Uuid, Set<Integer>> currentAssignment : assignmentMemberSpec.assignedPartitions().entrySet()) {
             Uuid topicId = currentAssignment.getKey();
             List<Integer> currentAssignmentList = new ArrayList<>(currentAssignment.getValue());
             if (metadataPerTopic.containsKey(topicId) && validSubscriptionList.contains(topicId)) {
@@ -251,7 +255,7 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
         RackAwareTopicIdPartition nextAssignedPartition = sortedAssignedPartitionsIter.next();
 
         for (Uuid topic : sortedAllTopics) {
-            int partitionCount = metadataPerTopic.get(topic).numPartitions;
+            int partitionCount = metadataPerTopic.get(topic).numPartitions();
 
             for (int i = 0; i < partitionCount; i++) {
                 if (shouldAddDirectly || !(nextAssignedPartition.topicId().equals(topic) && nextAssignedPartition.partition() == i)) {
@@ -269,6 +273,7 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
         }
         return unassignedPartitions;
     }
+
     protected GroupAssignment assignmentInCorrectFormat(Set<String> membersKeySet, Map<String, List<RackAwareTopicIdPartition>> computedAssignment) {
         Map<String, MemberAssignment> members = new HashMap<>();
         if (computedAssignment.isEmpty()) {

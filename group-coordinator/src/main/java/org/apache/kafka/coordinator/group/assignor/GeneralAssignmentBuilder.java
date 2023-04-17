@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -73,7 +74,7 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
 
     private void firstRoundAssignment() {
         sortedMembersPerTopic.forEach((topicId, subscribedMembers) -> {
-            int numPartitionsForTopic = metadataPerTopic.get(topicId).numPartitions;
+            int numPartitionsForTopic = metadataPerTopic.get(topicId).numPartitions();
             int numSubscribedMembers = subscribedMembers.size();
 
             Map<String, Integer> sortedSubscribedMembersWithTotalAssignmentSize = getSortedSubscribedMembersWithTotalAssignmentSize(subscribedMembers);
@@ -183,7 +184,7 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
         for (Map.Entry<String, AssignmentMemberSpec> memberEntry : membersData.entrySet()) {
             String memberId = memberEntry.getKey();
             AssignmentMemberSpec memberMetadata = memberEntry.getValue();
-            List<Uuid> topics = memberMetadata.subscribedTopics;
+            Collection<Uuid> topics = memberMetadata.subscribedTopicIds();
             for (Uuid topicId: topics) {
                 membersPerTopic.computeIfAbsent(topicId, k -> new ArrayList<>()).add(memberId);
             }
@@ -199,15 +200,14 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
 
         membersMetadata.forEach((memberId, assignmentMemberSpec) -> {
             Map<Uuid, Set<Integer>> validCurrentAssignmentForMember = new HashMap<>();
-            assignmentMemberSpec.currentAssignmentPerTopic.forEach((topicId, partitions) -> {
-                if (metadataPerTopic.containsKey(topicId) && assignmentMemberSpec.subscribedTopics.contains(topicId)) {
-                    validCurrentAssignmentForMember.put(topicId, assignmentMemberSpec.currentAssignmentPerTopic.get(topicId));
+            assignmentMemberSpec.assignedPartitions().forEach((topicId, partitions) -> {
+                if (metadataPerTopic.containsKey(topicId) && assignmentMemberSpec.subscribedTopicIds().contains(topicId)) {
+                    validCurrentAssignmentForMember.put(topicId, assignmentMemberSpec.assignedPartitions().get(topicId));
                 }
             });
             validCurrentAssignment.put(memberId, validCurrentAssignmentForMember);
         });
         return validCurrentAssignment;
     }
-
 
 }
