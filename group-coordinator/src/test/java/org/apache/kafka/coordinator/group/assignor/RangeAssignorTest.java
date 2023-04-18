@@ -345,7 +345,7 @@ public class RangeAssignorTest {
         topics.put(topic3Uuid, new AssignmentTopicMetadata(2));
 
         // Let initial subscriptions be A -> T1, T2, T3 // B -> T1, T2, T3 // C -> T1, T2, T3
-        // Change the subscriptions to A -> T1 // B -> T1 // C -> T1
+        // Change the subscriptions to A -> T1 // B -> T1, T2, T3 // C -> T2
         Map<String, AssignmentMemberSpec> members = new HashMap<>();
         // Consumer A
         Map<Uuid, Set<Integer>> currentAssignmentForA = new HashMap<>();
@@ -359,14 +359,14 @@ public class RangeAssignorTest {
         Map<Uuid, Set<Integer>> currentAssignmentForB = new HashMap<>();
         currentAssignmentForB.put(topic2Uuid, new HashSet<>(Collections.singletonList(1)));
         // Change subscriptions
-        List<Uuid> subscribedTopicsB = new ArrayList<>(Arrays.asList(topic1Uuid));
+        List<Uuid> subscribedTopicsB = new ArrayList<>(Arrays.asList(topic1Uuid, topic2Uuid, topic3Uuid));
         members.computeIfAbsent(consumerB, k -> new AssignmentMemberSpec(Optional.empty(), Optional.empty(), subscribedTopicsB, currentAssignmentForB));
         // Consumer C
         Map<Uuid, Set<Integer>> currentAssignmentForC = new HashMap<>();
         currentAssignmentForC.put(topic2Uuid, new HashSet<>(Collections.singletonList(2)));
         currentAssignmentForC.put(topic3Uuid, new HashSet<>(Arrays.asList(0, 1)));
         // Change subscriptions
-        List<Uuid> subscribedTopicsC = new ArrayList<>(Collections.singletonList(topic1Uuid));
+        List<Uuid> subscribedTopicsC = new ArrayList<>(Collections.singletonList(topic2Uuid));
         members.put(consumerC, new AssignmentMemberSpec(Optional.empty(), Optional.empty(), subscribedTopicsC, new HashMap<>()));
 
         AssignmentSpec assignmentSpec = new AssignmentSpec(members, topics);
@@ -383,8 +383,8 @@ public class RangeAssignorTest {
         expectedAssignment.computeIfAbsent(topic3Uuid, k -> new HashSet<>()).add(new HashSet<>(Arrays.asList(0, 1)));
 
         // Test for stickiness
-        assertTrue(computedAssignment.members().get(consumerC).targetPartitions().get(topic2Uuid).contains(2), "Stickiness test failed for Consumer C");
         assertTrue(computedAssignment.members().get(consumerA).targetPartitions().get(topic1Uuid).containsAll(Arrays.asList(0, 1)), "Stickiness test failed for Consumer A");
+        assertTrue(computedAssignment.members().get(consumerC).targetPartitions().get(topic2Uuid).contains(2), "Stickiness test failed for Consumer A");
 
         assertAssignment(expectedAssignment, computedAssignment);
     }

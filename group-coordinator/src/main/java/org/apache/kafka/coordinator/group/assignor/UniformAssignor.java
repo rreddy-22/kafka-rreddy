@@ -16,7 +16,6 @@
  */
 package org.apache.kafka.coordinator.group.assignor;
 
-import org.apache.kafka.clients.consumer.internals.AbstractStickyAssignor;
 import org.apache.kafka.coordinator.group.common.RackAwareTopicIdPartition;
 import org.apache.kafka.common.Uuid;
 import org.slf4j.Logger;
@@ -25,12 +24,8 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-
 
 public class UniformAssignor implements PartitionAssignor {
 
