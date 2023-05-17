@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -42,8 +43,6 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
 
     private Map<String, Map<Uuid, Set<Integer>>> newAssignment;
 
-    private Map<Uuid, Set<Integer>> unassignedPartitionsPerTopic;
-
     GeneralAssignmentBuilder(AssignmentSpec assignmentSpec) {
         super(assignmentSpec);
     }
@@ -51,18 +50,15 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
     @Override
     GroupAssignment build() {
 
-        sortedMembersPerTopic = getSortedMembersPerTopic(membersPerTopic(metadataPerMember));
-
+        sortedMembersPerTopic = getSortedMembersPerTopic(metadataPerMember);
+        System.out.println("Sorted members per topic" + sortedMembersPerTopic);
         validPreviousAssignment = getValidPreviousAssignment(metadataPerMember);
 
         newAssignment = new HashMap<>();
-        unassignedPartitionsPerTopic = new HashMap<>(metadataPerTopic.size());
         metadataPerMember.forEach((memberId, assignmentMemberSpec) -> newAssignment.put(memberId, new HashMap<>()));
 
-        retainStickyPartitions();
+        assignPartitions();
         System.out.println("Assignment after retaining sticky partitions " + newAssignment);
-        allocateUnassignedPartitions();
-        System.out.println("Assignment after unassigned were allocated " + newAssignment);
 
         // Consolidate the maps into MemberAssignment and then finally map each consumer to a MemberAssignment.
         Map<String, MemberAssignment> membersWithNewAssignment = new HashMap<>();
@@ -79,8 +75,10 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
         return newGroupAssignment;
     }
 
-    private void retainStickyPartitions() {
+    private void assignPartitions() {
+
         sortedMembersPerTopic.forEach((topicId, subscribedMembers) -> {
+            System.out.println("RETAIN STICKY PART");
             int numPartitionsForTopic = metadataPerTopic.get(topicId).numPartitions();
             int numSubscribedMembers = subscribedMembers.size();
 
@@ -101,6 +99,7 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
 
             for (String memberId : sortedSubscribedMembersWithTotalAssignmentSize.keySet()) {
                 int numPartitionsPreviouslyAssignedForTopic = validPreviousAssignment.get(memberId).getOrDefault(topicId, new HashSet<>()).size();
+                System.out.println("valid prev assignment for member" + memberId + "is " + validPreviousAssignment.get(memberId));
                 System.out.println(" number of partitions previously assigned for topic " + topicId + " partitions = " + numPartitionsPreviouslyAssignedForTopic);
                 // Allocate assigned sticky partitions
                 if (numPartitionsPreviouslyAssignedForTopic > 0) {
@@ -118,36 +117,17 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
                     }
                     availablePartitions.removeAll(newAssignment.get(memberId).get(topicId));
                 }
-                System.out.println(" new assignment after sticky ones assigned " + newAssignment);
+                System.out.println(" new assignment after sticky ones assigned for member" + memberId + "is" + newAssignment);
             }
-            // Put unassigned partitions per topic
-            unassignedPartitionsPerTopic.put(topicId, availablePartitions);
-            System.out.println(" Unassigned partitions after keeping the sticky ones" + unassignedPartitionsPerTopic);
-        });
-    }
-
-    private void allocateUnassignedPartitions() {
-        sortedMembersPerTopic.forEach((topicId, subscribedMembers) -> {
-            int numPartitionsForTopic = metadataPerTopic.get(topicId).numPartitions();
-            int numSubscribedMembers = subscribedMembers.size();
-
-            Map<String, Integer> sortedSubscribedMembersWithTotalAssignmentSize = getSortedSubscribedMembersWithTotalAssignmentSize(subscribedMembers);
+            System.out.println("ASSIGN UNASSIGNED PART");
+            sortedSubscribedMembersWithTotalAssignmentSize = getSortedSubscribedMembersWithTotalAssignmentSize(subscribedMembers);
             System.out.println("Sorted subscribed members by total current assignment size for topic id " + topicId + "is " + sortedSubscribedMembersWithTotalAssignmentSize);
-
-            // Sum of total number of partitions assigned to all subscribed members so far.
-            int totalPartitionsCurrentlyAssigned = sortedSubscribedMembersWithTotalAssignmentSize.values().stream().mapToInt(Integer::intValue).sum();
-            System.out.println("New assignment " + newAssignment + "total partitions currently assigned " + totalPartitionsCurrentlyAssigned);
-
-            int approximateQuotaPerMember = (numPartitionsForTopic + totalPartitionsCurrentlyAssigned) / numSubscribedMembers;
-            int numMembersWithExtraPartition = (numPartitionsForTopic + totalPartitionsCurrentlyAssigned) % numSubscribedMembers;
-            System.out.println("Approximate quota per member " + approximateQuotaPerMember + " number of members with extra partition " + numMembersWithExtraPartition);
-
             // Allocate unassigned partitions
             // Since the map doesn't guarantee order we need a list of memberIds to map each consumer to a particular index.
             List<String> memberIds = new ArrayList<>(sortedSubscribedMembersWithTotalAssignmentSize.keySet());
             int[] currentIndexForMember = new int[memberIds.size()];
             int[] memberLimits = new int[memberIds.size()];
-            List<Integer> unassignedPartitionsList = new ArrayList<>(unassignedPartitionsPerTopic.get(topicId));
+            List<Integer> unassignedPartitionsList = new ArrayList<>(availablePartitions);
             int numMembers = memberIds.size();
 
             for (int i = 0; i < memberIds.size(); i++) {
@@ -172,61 +152,63 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
                     currentIndexForMember[memberIndex]++;
                     newAssignment.get(memberIds.get(memberIndex)).computeIfAbsent(topicId, k -> new HashSet<>()).add(unassignedPartitionsList.get(i));
                 }
+                System.out.println("Assignment is now" + newAssignment);
 
             }
-            System.out.println(" New assignment after assigning unassigned partitions " + newAssignment);
         });
     }
 
     /** Sort in ascending order of total number of partitions already assigned to the member in the new assignment.
      * If size of the assignment is the same, sort in ascending order of number of topics the member is subscribed to.
+     * If the total assignment size and the number of topics the member is subscribed to is same then sort by total previous assignment size.
     */
     private Map<String, Integer> getSortedSubscribedMembersWithTotalAssignmentSize(List<String> unsortedSubscribedMembers) {
-        Map<String, Integer> sortedSubscribedMembersWithTotalAssignmentSize = new HashMap<>();
-        // Populate the Map with member names as keys and totalAssignmentSize as values
-        for (String memberId : unsortedSubscribedMembers) {
-            int totalAssignmentSize = newAssignment.get(memberId).values().stream()
-                    .flatMapToInt(assignment -> assignment.stream().mapToInt(Integer::intValue))
-                    .sum();
-            sortedSubscribedMembersWithTotalAssignmentSize.put(memberId, totalAssignmentSize);
-        }
-
-        // Sort the members in ascending order of total assignment size
-        sortedSubscribedMembersWithTotalAssignmentSize = sortedSubscribedMembersWithTotalAssignmentSize.entrySet().stream()
-                .sorted(Map.Entry.comparingByValue(Comparator.naturalOrder()))
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, LinkedHashMap::new));
-
-        return sortedSubscribedMembersWithTotalAssignmentSize;
+        return unsortedSubscribedMembers.stream()
+            .sorted(Comparator.comparingInt((String memberId) -> newAssignment.get(memberId).values().stream()
+                    .flatMapToInt(set -> IntStream.of(set.size()))
+                    .sum())
+                .thenComparingInt(memberId -> metadataPerMember.get(memberId).subscribedTopicIds().size())
+                .thenComparingInt(memberId -> validPreviousAssignment.get(memberId).values().stream()
+                    .flatMapToInt(set -> set.stream().mapToInt(Integer::intValue))
+                    .sum()))
+            .collect(Collectors.toMap(
+                memberId -> memberId,
+                memberId -> newAssignment.get(memberId).values().stream()
+                    .flatMapToInt(set -> IntStream.of(set.size()))
+                    .sum(),
+                Integer::sum,
+                LinkedHashMap::new
+            ));
     }
+
 
     /**
-     * Sort the topic Ids in ascending order based on the number of consumers subscribed to it.
+     * Get subscribed members per topic and sort the topic Ids in descending order based on the totalPartitions/number of consumers subscribed to it.
+     * If the above value is the same then sort in descending order of totalPartitions.
      */
-    private Map<Uuid, List<String>> getSortedMembersPerTopic(Map<Uuid, List<String>> unsortedMembersPerTopic) {
-
-        List<Map.Entry<Uuid, List<String>>> unsortedMembersPerTopicList = new ArrayList<>(unsortedMembersPerTopic.entrySet());
-        unsortedMembersPerTopicList.sort(Comparator.comparingInt(entry -> entry.getValue().size()));
-        // Create a new LinkedHashMap to preserve the sorted order
-        Map<Uuid, List<String>> sortedMap = new LinkedHashMap<>();
-        for (Map.Entry<Uuid, List<String>> entry : unsortedMembersPerTopicList) {
-            sortedMap.put(entry.getKey(), entry.getValue());
-        }
-        System.out.println("Sorted members per topic " + sortedMap);
-        return sortedMap;
-    }
-
-    private Map<Uuid, List<String>> membersPerTopic(Map<String, AssignmentMemberSpec> membersData) {
+    private Map<Uuid, List<String>> getSortedMembersPerTopic(Map<String, AssignmentMemberSpec> membersData) {
         Map<Uuid, List<String>> membersPerTopic = new HashMap<>();
-        for (Map.Entry<String, AssignmentMemberSpec> memberEntry : membersData.entrySet()) {
-            String memberId = memberEntry.getKey();
-            AssignmentMemberSpec memberMetadata = memberEntry.getValue();
+        membersData.forEach((memberId, memberMetadata) -> {
             Collection<Uuid> topics = memberMetadata.subscribedTopicIds();
             for (Uuid topicId: topics) {
                 membersPerTopic.computeIfAbsent(topicId, k -> new ArrayList<>()).add(memberId);
             }
-        }
+        });
         System.out.println("Members per topic " + membersPerTopic);
-        return membersPerTopic;
+
+        // Custom comparator to compare topics based on totalPartitions/totalConsumers
+        Comparator<Object> comparator = Comparator.comparingDouble(topicId -> {
+            int totalPartitions = metadataPerTopic.get(topicId).numPartitions();
+            int totalConsumers = membersPerTopic.get(topicId).size();
+            double ratio = (double) totalPartitions / totalConsumers;
+            return -Math.ceil(ratio);
+        }).thenComparingInt(topicId -> membersPerTopic.get(topicId).size());
+
+        // Create a TreeMap using the custom comparator to sort the keys
+        Map<Uuid, List<String>> sortedMembersPerTopic = new TreeMap<>(comparator);
+        sortedMembersPerTopic.putAll(membersPerTopic);
+
+        return sortedMembersPerTopic;
     }
 
     /**
@@ -236,36 +218,16 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
         Map<String, Map<Uuid, Set<Integer>>> validPreviousAssignment = new HashMap<>();
 
         membersMetadata.forEach((memberId, assignmentMemberSpec) -> {
-            Map<Uuid, Set<Integer>> validCurrentAssignmentForMember = new HashMap<>();
+            Map<Uuid, Set<Integer>> validPreviousAssignmentForMember = new HashMap<>();
             assignmentMemberSpec.assignedPartitions().forEach((topicId, partitions) -> {
                 if (metadataPerTopic.containsKey(topicId) && assignmentMemberSpec.subscribedTopicIds().contains(topicId)) {
-                    validCurrentAssignmentForMember.put(topicId, assignmentMemberSpec.assignedPartitions().get(topicId));
+                    validPreviousAssignmentForMember.put(topicId, assignmentMemberSpec.assignedPartitions().get(topicId));
                 }
             });
-            validPreviousAssignment.put(memberId, validCurrentAssignmentForMember);
+            validPreviousAssignment.put(memberId, validPreviousAssignmentForMember);
         });
         System.out.println("Valid prev assignment " + validPreviousAssignment);
         return validPreviousAssignment;
-    }
-
-    private Map<String, Map<Uuid, Set<Integer>>> deepCopy(Map<String, Map<Uuid, Set<Integer>>> assignment) {
-        Map<String, Map<Uuid, Set<Integer>>> copy = new HashMap<>();
-
-        for (Map.Entry<String, Map<Uuid, Set<Integer>>> entry1 : assignment.entrySet()) {
-            String key1 = entry1.getKey();
-            Map<Uuid, Set<Integer>> innerMap = entry1.getValue();
-            Map<Uuid, Set<Integer>> innerCopy = new HashMap<>();
-
-            for (Map.Entry<Uuid, Set<Integer>> entry2 : innerMap.entrySet()) {
-                Uuid key2 = entry2.getKey();
-                Set<Integer> innerSet = entry2.getValue();
-                Set<Integer> innerSetCopy = new HashSet<>(innerSet); // Assuming Set<Integer> implementation is HashSet
-
-                innerCopy.put(key2, innerSetCopy);
-            }
-            copy.put(key1, innerCopy);
-        }
-        return copy;
     }
 }
 

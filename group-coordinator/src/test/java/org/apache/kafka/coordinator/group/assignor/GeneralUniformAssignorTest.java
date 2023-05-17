@@ -131,7 +131,6 @@ public class GeneralUniformAssignorTest {
     }
     @Test
     public void testFirstAssignmentTwoConsumersTwoTopics() {
-        // A -> T1, T2 // B -> T3 // C -> T2, T3 // T1 -> 3 Partitions // T2 -> 3 Partitions // T3 -> 2 Partitions
         // Topics
         Map<Uuid, AssignmentTopicMetadata> topics = new HashMap<>();
         topics.put(topic1Uuid, new AssignmentTopicMetadata(6));
@@ -157,11 +156,6 @@ public class GeneralUniformAssignorTest {
 
         AssignmentSpec assignmentSpec = new AssignmentSpec(members, topics);
         GroupAssignment computedAssignment = assignor.assign(assignmentSpec);
-
-        // Assert computed assignments with expected values
-        // A -> T1 -> [0, 1, 2]
-        // B -> T3 -> [0, 1]
-        // C -> T2 -> [0, 1, 2]
 
         // Topic 1
         assertEquals(new HashSet<>(Collections.singletonList(1)),
