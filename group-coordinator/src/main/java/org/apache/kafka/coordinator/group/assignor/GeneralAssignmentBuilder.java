@@ -184,7 +184,7 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
 
     /**
      * Get subscribed members per topic and sort the topic Ids in descending order based on the totalPartitions/number of consumers subscribed to it.
-     * If the above value is the same then sort in descending order of totalPartitions.
+     * If the above value is the same then sort in ascending order of number of subscribers.
      */
     private Map<Uuid, List<String>> getSortedMembersPerTopic(Map<String, AssignmentMemberSpec> membersData) {
         Map<Uuid, List<String>> membersPerTopic = new HashMap<>();
@@ -196,13 +196,16 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
         });
         System.out.println("Members per topic " + membersPerTopic);
 
+        Comparator<Object> tieBreakerComparator = Comparator.comparingInt(topicId ->
+            membersPerTopic.get(topicId).size()
+        );
         // Custom comparator to compare topics based on totalPartitions/totalConsumers
         Comparator<Object> comparator = Comparator.comparingDouble(topicId -> {
             int totalPartitions = metadataPerTopic.get(topicId).numPartitions();
-            int totalConsumers = membersPerTopic.get(topicId).size();
-            double ratio = (double) totalPartitions / totalConsumers;
-            return -Math.ceil(ratio);
-        }).thenComparingInt(topicId -> membersPerTopic.get(topicId).size());
+            int totalSubscribers = membersPerTopic.get(topicId).size();
+            double ratio = (double) totalPartitions / totalSubscribers;
+            return Math.ceil(ratio);
+        }).reversed().thenComparing(tieBreakerComparator);
 
         // Create a TreeMap using the custom comparator to sort the keys
         Map<Uuid, List<String>> sortedMembersPerTopic = new TreeMap<>(comparator);
