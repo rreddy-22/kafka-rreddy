@@ -196,17 +196,18 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
         });
         System.out.println("Members per topic " + membersPerTopic);
 
-        Comparator<Object> tieBreakerComparator = Comparator.comparingInt(topicId ->
-            membersPerTopic.get(topicId).size()
-        );
+        Comparator<Object> comparator = Comparator.comparingInt(topicId ->
+            membersPerTopic.get(topicId).size());
+
         // Custom comparator to compare topics based on totalPartitions/totalConsumers
-        Comparator<Object> comparator = Comparator.comparingDouble(topicId -> {
+       /* Comparator<Object> comparator = Comparator.comparingDouble(topicId -> {
             int totalPartitions = metadataPerTopic.get(topicId).numPartitions();
             int totalSubscribers = membersPerTopic.get(topicId).size();
             double ratio = (double) totalPartitions / totalSubscribers;
-            return Math.ceil(ratio);
-        }).reversed().thenComparing(tieBreakerComparator);
-
+            return -Math.ceil(ratio);
+        }).thenComparingInt(topicId ->
+            membersPerTopic.get(topicId).size());
+*/
         // Create a TreeMap using the custom comparator to sort the keys
         Map<Uuid, List<String>> sortedMembersPerTopic = new TreeMap<>(comparator);
         sortedMembersPerTopic.putAll(membersPerTopic);
