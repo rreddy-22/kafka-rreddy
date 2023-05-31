@@ -114,6 +114,80 @@ public class GeneralUniformAssignorTest {
         assertAssignment(expectedAssignment, computedAssignment);
     }
     @Test
+    public void testInitialAssignmentWithThreeConsumersThreeTopics() {
+        Map<Uuid, AssignmentTopicMetadata> topics = new HashMap<>();
+        topics.put(topic1Uuid, new AssignmentTopicMetadata(12));
+        topics.put(topic2Uuid, new AssignmentTopicMetadata(15));
+        topics.put(topic3Uuid, new AssignmentTopicMetadata(5));
+
+        Map<String, AssignmentMemberSpec> members = new TreeMap<>();
+
+        members.put(consumerA, new AssignmentMemberSpec(
+            Optional.empty(),
+            Optional.empty(),
+            Arrays.asList(topic1Uuid, topic2Uuid),
+            Collections.emptyMap()
+        ));
+
+        members.put(consumerB, new AssignmentMemberSpec(
+            Optional.empty(),
+            Optional.empty(),
+            Arrays.asList(topic2Uuid),
+            Collections.emptyMap()
+        ));
+
+        members.put(consumerC, new AssignmentMemberSpec(
+            Optional.empty(),
+            Optional.empty(),
+            Arrays.asList(topic3Uuid, topic1Uuid),
+            Collections.emptyMap()
+        ));
+
+        AssignmentSpec assignmentSpec = new AssignmentSpec(members, topics);
+        GroupAssignment computedAssignment = assignor.assign(assignmentSpec);
+
+        Map<String, Map<Uuid, Set<Integer>>> expectedAssignment = new HashMap<>();
+
+        assertAssignment(expectedAssignment, computedAssignment);
+    }
+    @Test
+    public void testAnotherInitialAssignmentWithThreeConsumersThreeTopics() {
+        Map<Uuid, AssignmentTopicMetadata> topics = new HashMap<>();
+        topics.put(topic1Uuid, new AssignmentTopicMetadata(7));
+        topics.put(topic2Uuid, new AssignmentTopicMetadata(4));
+        topics.put(topic3Uuid, new AssignmentTopicMetadata(6));
+
+        Map<String, AssignmentMemberSpec> members = new TreeMap<>();
+
+        members.put(consumerA, new AssignmentMemberSpec(
+            Optional.empty(),
+            Optional.empty(),
+            Arrays.asList(topic1Uuid, topic3Uuid),
+            Collections.emptyMap()
+        ));
+
+        members.put(consumerB, new AssignmentMemberSpec(
+            Optional.empty(),
+            Optional.empty(),
+            Arrays.asList(topic2Uuid),
+            Collections.emptyMap()
+        ));
+
+        members.put(consumerC, new AssignmentMemberSpec(
+            Optional.empty(),
+            Optional.empty(),
+            Arrays.asList(topic3Uuid, topic2Uuid),
+            Collections.emptyMap()
+        ));
+
+        AssignmentSpec assignmentSpec = new AssignmentSpec(members, topics);
+        GroupAssignment computedAssignment = assignor.assign(assignmentSpec);
+
+        Map<String, Map<Uuid, Set<Integer>>> expectedAssignment = new HashMap<>();
+
+        assertAssignment(expectedAssignment, computedAssignment);
+    }
+    @Test
     public void testFirstAssignmentTwoConsumersTwoTopics() {
         Map<Uuid, AssignmentTopicMetadata> topics = new HashMap<>();
         topics.put(topic1Uuid, new AssignmentTopicMetadata(6));
@@ -212,64 +286,12 @@ public class GeneralUniformAssignorTest {
         assertAssignment(expectedAssignment, computedAssignment);
     }
 
-    @Test
-    public void testReassignmentWhenOneConsumerRemovedAfterInitialAssignmentWithThreeConsumersThreeTopics() {
-        Map<Uuid, AssignmentTopicMetadata> topics = new HashMap<>();
-        topics.put(topic1Uuid, new AssignmentTopicMetadata(12));
-        topics.put(topic2Uuid, new AssignmentTopicMetadata(15));
-        topics.put(topic3Uuid, new AssignmentTopicMetadata(5));
 
-        Map<String, AssignmentMemberSpec> members = new TreeMap<>();
-        // Consumer A was removed
-        members.put(consumerA, new AssignmentMemberSpec(
-            Optional.empty(),
-            Optional.empty(),
-            Arrays.asList(topic1Uuid, topic2Uuid),
-            Collections.emptyMap()
-        ));
-
-        Map<Uuid, Set<Integer>> currentAssignmentForB = mkAssignment(
-            mkTopicAssignment(topic1Uuid, 2),
-            mkTopicAssignment(topic2Uuid, 2)
-        );
-
-        members.put(consumerB, new AssignmentMemberSpec(
-            Optional.empty(),
-            Optional.empty(),
-            Arrays.asList(topic2Uuid),
-            Collections.emptyMap()
-        ));
-
-        Map<Uuid, Set<Integer>> currentAssignmentForC = mkAssignment(
-            mkTopicAssignment(topic1Uuid, 2),
-            mkTopicAssignment(topic2Uuid, 2)
-        );
-
-        members.put(consumerC, new AssignmentMemberSpec(
-            Optional.empty(),
-            Optional.empty(),
-            Arrays.asList(topic3Uuid, topic1Uuid),
-            Collections.emptyMap()
-        ));
-
-        AssignmentSpec assignmentSpec = new AssignmentSpec(members, topics);
-        GroupAssignment computedAssignment = assignor.assign(assignmentSpec);
-
-        Map<String, Map<Uuid, Set<Integer>>> expectedAssignment = new HashMap<>();
-
-        expectedAssignment.put(consumerB, mkAssignment(
-            mkTopicAssignment(topic1Uuid, 0, 1, 2),
-            mkTopicAssignment(topic2Uuid, 0, 1, 2)
-        ));
-
-        assertAssignment(expectedAssignment, computedAssignment);
-    }
     private void assertAssignment(Map<String, Map<Uuid, Set<Integer>>> expectedAssignment, GroupAssignment computedGroupAssignment) {
         //assertEquals(expectedAssignment.size(), computedGroupAssignment.members().size());
         for (String memberId : computedGroupAssignment.members().keySet()) {
             Map<Uuid, Set<Integer>> computedAssignmentForMember = computedGroupAssignment.members().get(memberId).targetPartitions();
-            System.out.println("Size of assignment for member " + memberId + "is" + computedGroupAssignment.members().get(memberId).targetPartitions().size());
-            //assertEquals(expectedAssignment.get(memberId), computedAssignmentForMember);
+            assertEquals(expectedAssignment.get(memberId), computedAssignmentForMember);
         }
     }
 }

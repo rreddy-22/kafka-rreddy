@@ -196,9 +196,13 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
         });
         System.out.println("Members per topic " + membersPerTopic);
 
-        Comparator<Object> comparator = Comparator.comparingInt(topicId ->
-            membersPerTopic.get(topicId).size());
+        Comparator<Object> backupComparator = Comparator.comparingInt(topicId ->
+            metadataPerTopic.get(topicId).numPartitions()).reversed();
 
+        Comparator<Object> comparator = Comparator.comparingDouble(topicId -> {
+            int totalSubscribers = membersPerTopic.get(topicId).size();
+            return totalSubscribers;
+        }).thenComparing(backupComparator);
         // Custom comparator to compare topics based on totalPartitions/totalConsumers
        /* Comparator<Object> comparator = Comparator.comparingDouble(topicId -> {
             int totalPartitions = metadataPerTopic.get(topicId).numPartitions();
