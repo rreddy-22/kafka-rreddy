@@ -321,6 +321,8 @@
 
     <!-- group coordinator -->
     <suppress checks="CyclomaticComplexity"
+              files="(ConsumerGroupMember).java"/>
+    <suppress checks="ParameterNumber"
               files="(ConsumerGroupMember|GroupMetadataManager).java"/>
     <suppress checks="(NPathComplexity|MethodLength)"
               files="(GroupMetadataManager|ConsumerGroupTest|GroupMetadataManagerTest).java"/>

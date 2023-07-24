@@ -777,7 +777,8 @@ public class GroupMetadataManager {
             subscriptionMetadata = group.computeSubscriptionMetadata(
                 member,
                 updatedMember,
-                metadataImage.topics()
+                metadataImage.topics(),
+                metadataImage.cluster()
             );
 
             if (!subscriptionMetadata.equals(group.subscriptionMetadata())) {
@@ -808,7 +809,7 @@ public class GroupMetadataManager {
 
             try {
                 TargetAssignmentBuilder.TargetAssignmentResult assignmentResult =
-                    new TargetAssignmentBuilder(groupId, groupEpoch, assignors.get(preferredServerAssignor))
+                    new TargetAssignmentBuilder(groupId, groupEpoch,assignors.get(preferredServerAssignor))
                         .withMembers(group.members())
                         .withSubscriptionMetadata(subscriptionMetadata)
                         .withTargetAssignment(group.targetAssignment())
@@ -927,7 +928,8 @@ public class GroupMetadataManager {
         Map<String, TopicMetadata> subscriptionMetadata = group.computeSubscriptionMetadata(
             member,
             null,
-            metadataImage.topics()
+            metadataImage.topics(),
+            metadataImage.cluster()
         );
 
         if (!subscriptionMetadata.equals(group.subscriptionMetadata())) {
