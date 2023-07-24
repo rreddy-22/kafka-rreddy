@@ -324,6 +324,14 @@
               files="(ConsumerGroupMember).java"/>
     <suppress checks="ParameterNumber"
               files="(ConsumerGroupMember|GroupMetadataManager).java"/>
+    <suppress checks="MethodLength"
+              files="(GroupMetadataManager|ConsumerGroupTest|GroupMetadataManagerTest).java"/>
+    <suppress checks="NPathComplexity"
+              files="(GroupMetadataManager).java"/>
+    <suppress checks="ParameterNumber"
+              files="(ConsumerGroupMember).java"/>
+    <suppress checks="ParameterNumber"
+              files="(ConsumerGroupMember|GroupMetadataManager).java"/>
     <suppress checks="(NPathComplexity|MethodLength)"
               files="(GroupMetadataManager|ConsumerGroupTest|GroupMetadataManagerTest).java"/>
     <suppress checks="ClassFanOutComplexity"
