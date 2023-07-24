@@ -212,10 +212,10 @@ public class TargetAssignmentBuilderTest {
 
             // Verify that the assignor was called once with the expected
             // assignment spec.
-            verify(assignor, times(1))
-                .assign(
-                    assignmentSpec, assignmentTopicMetadata
-                );
+            verify(assignor, times(1)).assign(
+                assignmentSpec,
+                assignmentTopicMetadata
+            );
 
             return result;
         }
