@@ -417,19 +417,25 @@ public class ConsumerGroupTest {
             consumerGroup.computeSubscriptionMetadata(
                 null,
                 null,
-                image.topics()
+                image.topics(),
+                image.cluster()
             )
         );
 
         // Compute while taking into account member 1.
         assertEquals(
             mkMap(
-                mkEntry("foo", new TopicMetadata(fooTopicId, "foo", 1))
+                mkEntry("foo",
+                    new TopicMetadata(fooTopicId, "foo", 1, mkMap(
+                        mkEntry(0, Collections.emptySet()))
+                    )
+                )
             ),
             consumerGroup.computeSubscriptionMetadata(
                 null,
                 member1,
-                image.topics()
+                image.topics(),
+                image.cluster()
             )
         );
 
@@ -439,12 +445,17 @@ public class ConsumerGroupTest {
         // It should return foo now.
         assertEquals(
             mkMap(
-                mkEntry("foo", new TopicMetadata(fooTopicId, "foo", 1))
+                mkEntry("foo",
+                    new TopicMetadata(fooTopicId, "foo", 1, mkMap(
+                        mkEntry(0, Collections.emptySet()))
+                    )
+                )
             ),
             consumerGroup.computeSubscriptionMetadata(
                 null,
                 null,
-                image.topics()
+                image.topics(),
+                image.cluster()
             )
         );
 
@@ -454,20 +465,31 @@ public class ConsumerGroupTest {
             consumerGroup.computeSubscriptionMetadata(
                 member1,
                 null,
-                image.topics()
+                image.topics(),
+                image.cluster()
             )
         );
 
         // Compute while taking into account member 2.
         assertEquals(
             mkMap(
-                mkEntry("foo", new TopicMetadata(fooTopicId, "foo", 1)),
-                mkEntry("bar", new TopicMetadata(barTopicId, "bar", 2))
+                mkEntry("foo",
+                    new TopicMetadata(fooTopicId, "foo", 1, mkMap(
+                        mkEntry(0, Collections.emptySet()))
+                    )
+                ),
+                mkEntry("bar",
+                    new TopicMetadata(barTopicId, "bar", 2, mkMap(
+                        mkEntry(0, Collections.emptySet()),
+                        mkEntry(1, Collections.emptySet()))
+                    )
+                )
             ),
             consumerGroup.computeSubscriptionMetadata(
                 null,
                 member2,
-                image.topics()
+                image.topics(),
+                image.cluster()
             )
         );
 
@@ -477,51 +499,88 @@ public class ConsumerGroupTest {
         // It should return foo and bar.
         assertEquals(
             mkMap(
-                mkEntry("foo", new TopicMetadata(fooTopicId, "foo", 1)),
-                mkEntry("bar", new TopicMetadata(barTopicId, "bar", 2))
+                mkEntry("foo",
+                    new TopicMetadata(fooTopicId, "foo", 1, mkMap(
+                        mkEntry(0, Collections.emptySet()))
+                    )
+                ),
+                mkEntry("bar",
+                    new TopicMetadata(barTopicId, "bar", 2, mkMap(
+                        mkEntry(0, Collections.emptySet()),
+                        mkEntry(1, Collections.emptySet()))
+                    )
+                )
             ),
             consumerGroup.computeSubscriptionMetadata(
                 null,
                 null,
-                image.topics()
+                image.topics(),
+                image.cluster()
             )
         );
 
         // Compute while taking into account removal of member 2.
         assertEquals(
             mkMap(
-                mkEntry("foo", new TopicMetadata(fooTopicId, "foo", 1))
+                mkEntry("foo",
+                    new TopicMetadata(fooTopicId, "foo", 1, mkMap(
+                        mkEntry(0, Collections.emptySet()))
+                    )
+                )
             ),
             consumerGroup.computeSubscriptionMetadata(
                 member2,
                 null,
-                image.topics()
+                image.topics(),
+                image.cluster()
             )
         );
 
         // Removing member1 results in returning bar.
         assertEquals(
             mkMap(
-                mkEntry("bar", new TopicMetadata(barTopicId, "bar", 2))
+                mkEntry("bar",
+                    new TopicMetadata(barTopicId, "bar", 2, mkMap(
+                        mkEntry(0, Collections.emptySet()),
+                        mkEntry(1, Collections.emptySet()))
+                    )
+                )
             ),
             consumerGroup.computeSubscriptionMetadata(
                 member1,
                 null,
-                image.topics()
+                image.topics(),
+                image.cluster()
             )
         );
 
         // Compute while taking into account member 3.
         assertEquals(
             mkMap(
-                mkEntry("foo", new TopicMetadata(fooTopicId, "foo", 1)),
-                mkEntry("bar", new TopicMetadata(barTopicId, "bar", 2)),
-                mkEntry("zar", new TopicMetadata(zarTopicId, "zar", 3))
+                mkEntry("foo",
+                    new TopicMetadata(fooTopicId, "foo", 1, mkMap(
+                        mkEntry(0, Collections.emptySet()))
+                    )
+                ),
+                mkEntry("bar",
+                    new TopicMetadata(barTopicId, "bar", 2, mkMap(
+                        mkEntry(0, Collections.emptySet()),
+                        mkEntry(1, Collections.emptySet()))
+                    )
+                ),
+                mkEntry("zar",
+                    new TopicMetadata(zarTopicId, "zar", 3, mkMap(
+                        mkEntry(0, Collections.emptySet()),
+                        mkEntry(1, Collections.emptySet()),
+                        mkEntry(2, Collections.emptySet()))
+                    )
+                )
             ),
             consumerGroup.computeSubscriptionMetadata(
                 null,
                 member3,
-                image.topics()
+                image.topics(),
+                image.cluster()
             )
         );
 
@@ -531,14 +590,30 @@ public class ConsumerGroupTest {
         // It should return foo, bar and zar.
         assertEquals(
             mkMap(
-                mkEntry("foo", new TopicMetadata(fooTopicId, "foo", 1)),
-                mkEntry("bar", new TopicMetadata(barTopicId, "bar", 2)),
-                mkEntry("zar", new TopicMetadata(zarTopicId, "zar", 3))
+                mkEntry("foo",
+                    new TopicMetadata(fooTopicId, "foo", 1, mkMap(
+                        mkEntry(0, Collections.emptySet()))
+                    )
+                ),
+                mkEntry("bar",
+                    new TopicMetadata(barTopicId, "bar", 2, mkMap(
+                        mkEntry(0, Collections.emptySet()),
+                        mkEntry(1, Collections.emptySet()))
+                    )
+                ),
+                mkEntry("zar",
+                    new TopicMetadata(zarTopicId, "zar", 3, mkMap(
+                        mkEntry(0, Collections.emptySet()),
+                        mkEntry(1, Collections.emptySet()),
+                        mkEntry(2, Collections.emptySet()))
+                    )
+                )
             ),
             consumerGroup.computeSubscriptionMetadata(
                 null,
                 null,
-                image.topics()
+                image.topics(),
+                image.cluster()
             )
         );
     }
