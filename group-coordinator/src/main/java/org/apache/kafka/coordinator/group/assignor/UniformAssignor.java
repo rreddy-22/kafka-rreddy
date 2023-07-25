@@ -16,7 +16,7 @@
  */
 package org.apache.kafka.coordinator.group.assignor;
 
-import org.apache.kafka.coordinator.group.common.RackAwareTopicIdPartition;
+import org.apache.kafka.coordinator.group.common.TopicIdPartition;
 import org.apache.kafka.common.Uuid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,15 +35,23 @@ public class UniformAssignor implements PartitionAssignor {
         return UNIFORM_ASSIGNOR_NAME;
     }
 
+    /**
+     * Perform the group assignment given the current members and
+     * topic metadata.
+     *
+     * @param assignmentSpec           The member assignment spec.
+     * @param subscribedTopicDescriber The topic and cluster metadata describer {@link SubscribedTopicDescriber}.
+     * @return The new assignment for the group.
+     */
     @Override
-    public GroupAssignment assign(AssignmentSpec assignmentSpec) throws PartitionAssignorException {
+    public GroupAssignment assign(AssignmentSpec assignmentSpec, SubscribedTopicDescriber subscribedTopicDescriber) throws PartitionAssignorException {
         AbstractAssignmentBuilder assignmentBuilder;
         if (allSubscriptionsEqual(assignmentSpec.members())) {
             log.debug("Detected that all consumers were subscribed to same set of topics, invoking the "
-                    + "optimized assignment algorithm");
-            assignmentBuilder = new OptimizedAssignmentBuilder(assignmentSpec);
+                + "optimized assignment algorithm");
+            assignmentBuilder = new OptimizedAssignmentBuilder(assignmentSpec, subscribedTopicDescriber);
         } else {
-            assignmentBuilder = new GeneralAssignmentBuilder(assignmentSpec);
+            assignmentBuilder = new GeneralAssignmentBuilder(assignmentSpec, subscribedTopicDescriber);
         }
         return assignmentBuilder.build();
     }
@@ -62,12 +70,12 @@ public class UniformAssignor implements PartitionAssignor {
 
     protected static abstract class AbstractAssignmentBuilder {
 
-        final Map<Uuid, AssignmentTopicMetadata> metadataPerTopic;
         final Map<String, AssignmentMemberSpec> metadataPerMember;
+        final SubscribedTopicDescriber subscribedTopicDescriber;
 
-        AbstractAssignmentBuilder(AssignmentSpec assignmentSpec) {
-            this.metadataPerTopic = assignmentSpec.topics();
+        AbstractAssignmentBuilder(AssignmentSpec assignmentSpec, SubscribedTopicDescriber subscribedTopicDescriber) {
             this.metadataPerMember = assignmentSpec.members();
+            this.subscribedTopicDescriber = subscribedTopicDescriber;
         }
 
         /**
@@ -77,12 +85,12 @@ public class UniformAssignor implements PartitionAssignor {
          */
         abstract GroupAssignment build();
 
-        protected List<RackAwareTopicIdPartition> getAllTopicPartitions(List<Uuid> listAllTopics) {
-            List<RackAwareTopicIdPartition> allPartitions = new ArrayList<>();
+        protected List<TopicIdPartition> getAllTopicPartitions(List<Uuid> listAllTopics) {
+            List<TopicIdPartition> allPartitions = new ArrayList<>();
             for (Uuid topic : listAllTopics) {
-                int partitionCount = metadataPerTopic.get(topic).numPartitions();
+                int partitionCount = subscribedTopicDescriber.numPartitions(topic);
                 for (int i = 0; i < partitionCount; ++i) {
-                    allPartitions.add(new RackAwareTopicIdPartition(topic, i, null));
+                    allPartitions.add(new TopicIdPartition(topic, i));
                 }
             }
             return allPartitions;

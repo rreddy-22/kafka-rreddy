@@ -17,7 +17,7 @@
 package org.apache.kafka.coordinator.group.assignor;
 
 import org.apache.kafka.common.Uuid;
-import org.apache.kafka.coordinator.group.common.RackAwareTopicIdPartition;
+import org.apache.kafka.coordinator.group.common.TopicIdPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,12 +67,12 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
     // Members that need to be assigned the remaining number of partitions including extra partitions.
     private Map<String, Integer> unfilledMembers;
     // Partitions that are available to be assigned, computed by taking the difference between total partitions and assigned sticky partitions.
-    private List<RackAwareTopicIdPartition> unassignedPartitions;
+    private List<TopicIdPartition> unassignedPartitions;
 
     private final Map<String, MemberAssignment> newAssignment;
 
-    OptimizedAssignmentBuilder(AssignmentSpec assignmentSpec) {
-        super(assignmentSpec);
+    OptimizedAssignmentBuilder(AssignmentSpec assignmentSpec, SubscribedTopicDescriber subscribedTopicDescriber) {
+        super(assignmentSpec, subscribedTopicDescriber);
         potentiallyUnfilledMembers = new HashMap<>();
         unfilledMembers = new HashMap<>();
         newAssignment = new HashMap<>();
@@ -80,9 +80,9 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
 
         // Only add topicIds from the subscription list that are still present in the topicMetadata.
         for (Uuid topicId : assignmentSpec.members().values().iterator().next().subscribedTopicIds()) {
-            if (assignmentSpec.topics().containsKey(topicId)) {
+            if (subscribedTopicDescriber.subscribedTopicIds().contains(topicId)) {
                 validSubscriptionList.add(topicId);
-                totalValidPartitionsCount += assignmentSpec.topics().get(topicId).numPartitions();
+                totalValidPartitionsCount += subscribedTopicDescriber.numPartitions(topicId);
             } else {
                 log.info("The subscribed topic : " + topicId + " doesn't exist in the topic metadata ");
             }
@@ -105,7 +105,7 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
             newAssignment.put(memberId, new MemberAssignment(new HashMap<>()));
         });
 
-        List<RackAwareTopicIdPartition> allAssignedStickyPartitions = getAssignedStickyPartitions();
+        List<TopicIdPartition> allAssignedStickyPartitions = getAssignedStickyPartitions();
 
         unassignedPartitions = getUnassignedPartitions(allAssignedStickyPartitions);
 
@@ -120,13 +120,14 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
         return new GroupAssignment(newAssignment);
     }
 
-    //Also fills potentially unfilled members based on the remaining number of partitions required to meet the minQuota.
-    private List<RackAwareTopicIdPartition> getAssignedStickyPartitions() {
-        List<RackAwareTopicIdPartition> allAssignedStickyPartitions = new ArrayList<>();
+    // Also fills potentially unfilled members based on the remaining number of partitions required to meet the minQuota.
+    private List<TopicIdPartition> getAssignedStickyPartitions() {
+        List<TopicIdPartition> allAssignedStickyPartitions = new ArrayList<>();
 
         metadataPerMember.forEach((memberId, assignmentMemberSpec) -> {
             // Remove all the topics that aren't in the subscriptions or the topic metadata anymore.
-            List<RackAwareTopicIdPartition> validCurrentAssignment = getValidCurrentAssignment(assignmentMemberSpec.assignedPartitions());
+            // If rack awareness is enabled, only add partitions if any of the consumers racks match.
+            List<TopicIdPartition> validCurrentAssignment = getValidCurrentAssignment(assignmentMemberSpec.assignedPartitions());
 
             int currentAssignmentSize = validCurrentAssignment.size();
             int remaining = minQuota - currentAssignmentSize;
@@ -161,19 +162,19 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
     }
 
     // Keep the partitions in the assignment only if they are still part of the new topic metadata and the members subscriptions.
-    // Convert the assignment format to a list of RackAwareTopicIdPartition which contains the topic id and partition along with a list of rackIds if necessary.
-    private List<RackAwareTopicIdPartition> getValidCurrentAssignment(Map<Uuid, Set<Integer>> assignedPartitions) {
-        List<RackAwareTopicIdPartition> validCurrentAssignmentList = new ArrayList<>();
+    // Convert the assignment format to a list of TopicIdPartition which contains the topic id and partition.
+    private List<TopicIdPartition> getValidCurrentAssignment(Map<Uuid, Set<Integer>> assignedPartitions) {
+        List<TopicIdPartition> validCurrentAssignmentList = new ArrayList<>();
 
         assignedPartitions.forEach((topicId, currentAssignment) -> {
             List<Integer> currentAssignmentList = new ArrayList<>(currentAssignment);
-            if (metadataPerTopic.containsKey(topicId) && validSubscriptionList.contains(topicId)) {
+            if (subscribedTopicDescriber.subscribedTopicIds().contains(topicId) && validSubscriptionList.contains(topicId)) {
                 for (Integer partition : currentAssignmentList) {
                     validCurrentAssignmentList.add(
-                        new RackAwareTopicIdPartition(topicId, partition, null)
+                        new TopicIdPartition(topicId, partition)
                     );
                 }
-            } else if (!metadataPerTopic.containsKey(topicId)) {
+            } else if (!subscribedTopicDescriber.subscribedTopicIds().contains(topicId)) {
                 throw new PartitionAssignorException("Members are subscribed to topic " +
                         topicId + " which doesn't exist in the topic metadata");
             }
@@ -225,8 +226,8 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
         return unfilledMembers;
     }
 
-    private List<RackAwareTopicIdPartition> getUnassignedPartitions(List<RackAwareTopicIdPartition> allAssignedStickyPartitions) {
-        List<RackAwareTopicIdPartition> unassignedPartitions = new ArrayList<>();
+    private List<TopicIdPartition> getUnassignedPartitions(List<TopicIdPartition> allAssignedStickyPartitions) {
+        List<TopicIdPartition> unassignedPartitions = new ArrayList<>();
         // We only care about the topics that the members are subscribed to.
         List<Uuid> sortedAllTopics = new ArrayList<>(validSubscriptionList);
         Collections.sort(sortedAllTopics);
@@ -234,18 +235,18 @@ public class OptimizedAssignmentBuilder extends UniformAssignor.AbstractAssignme
             return getAllTopicPartitions(sortedAllTopics);
         }
 
-        Collections.sort(allAssignedStickyPartitions, Comparator.comparing(RackAwareTopicIdPartition::topicId).thenComparing(RackAwareTopicIdPartition::partition));
+        Collections.sort(allAssignedStickyPartitions, Comparator.comparing(TopicIdPartition::topicId).thenComparing(TopicIdPartition::partition));
         // Use two pointer approach and get the partitions that are in the total partitions but not in the assigned partitions.
         boolean shouldAddDirectly = false;
-        Iterator<RackAwareTopicIdPartition> sortedAssignedPartitionsIter = allAssignedStickyPartitions.iterator();
-        RackAwareTopicIdPartition nextAssignedPartition = sortedAssignedPartitionsIter.next();
+        Iterator<TopicIdPartition> sortedAssignedPartitionsIter = allAssignedStickyPartitions.iterator();
+        TopicIdPartition nextAssignedPartition = sortedAssignedPartitionsIter.next();
 
         for (Uuid topic : sortedAllTopics) {
-            int partitionCount = metadataPerTopic.get(topic).numPartitions();
+            int partitionCount = subscribedTopicDescriber.numPartitions(topic);
 
             for (int i = 0; i < partitionCount; i++) {
                 if (shouldAddDirectly || !(nextAssignedPartition.topicId().equals(topic) && nextAssignedPartition.partition() == i)) {
-                    unassignedPartitions.add(new RackAwareTopicIdPartition(topic, i, null));
+                    unassignedPartitions.add(new TopicIdPartition(topic, i));
                 } else {
                     // This partition is in assignedPartitions, don't add to unassignedPartitions, just get next assigned partition.
                     if (sortedAssignedPartitionsIter.hasNext()) {

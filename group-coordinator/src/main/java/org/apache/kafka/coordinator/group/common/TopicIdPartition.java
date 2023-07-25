@@ -18,19 +18,15 @@ package org.apache.kafka.coordinator.group.common;
 
 import org.apache.kafka.common.Uuid;
 
-import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 
-public class RackAwareTopicIdPartition {
+public class TopicIdPartition {
     private final Uuid topicId;
     private final Integer partition;
-    private final Optional<List<String>> rackIds;
 
-    public RackAwareTopicIdPartition(Uuid topicId, Integer topicPartition, Optional<List<String>> rackIds) {
+    public TopicIdPartition(Uuid topicId, Integer topicPartition) {
         this.topicId = Objects.requireNonNull(topicId, "topicId can not be null");
         this.partition = Objects.requireNonNull(topicPartition, "topicPartition can not be null");
-        this.rackIds = rackIds;
     }
 
     /**
@@ -55,7 +51,7 @@ public class RackAwareTopicIdPartition {
         if (o == null || getClass() != o.getClass()) {
             return false;
         }
-        RackAwareTopicIdPartition that = (RackAwareTopicIdPartition) o;
+        TopicIdPartition that = (TopicIdPartition) o;
         return topicId.equals(that.topicId) &&
                 partition.equals(that.partition);
     }
@@ -70,7 +66,9 @@ public class RackAwareTopicIdPartition {
 
     @Override
     public String toString() {
-        return topicId() + "-" + partition();
+        return "TopicIdPartition(" +
+            "topicId=" + topicId +
+            ", partition=" + partition +
+            ')';
     }
-
 }
