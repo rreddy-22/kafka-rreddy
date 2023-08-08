@@ -20,17 +20,11 @@ package org.apache.kafka.coordinator.group.assignor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignmentBuilder {
-    private static final Logger log = LoggerFactory.getLogger(GeneralAssignmentBuilder.class);
+public class GeneralUniformAssignor extends UniformAssignor {
+    private static final Logger log = LoggerFactory.getLogger(GeneralUniformAssignor.class);
 
-    GeneralAssignmentBuilder(AssignmentSpec assignmentSpec, SubscribedTopicDescriber subscribedTopicDescriber) {
-        super(assignmentSpec, subscribedTopicDescriber);
-    }
-
-    @Override
-    GroupAssignment build() {
+    protected GroupAssignment build() {
         return null;
-
 
     }
 }
