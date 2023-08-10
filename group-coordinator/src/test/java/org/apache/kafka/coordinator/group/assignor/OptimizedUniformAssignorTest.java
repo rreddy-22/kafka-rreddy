@@ -106,9 +106,9 @@ public class OptimizedUniformAssignorTest {
         );
 
         AssignmentSpec assignmentSpec = new AssignmentSpec(members);
+        GroupAssignment groupAssignment = assignor.assign(assignmentSpec, subscribedTopicMetadata);
 
-        assertThrows(PartitionAssignorException.class,
-            () -> assignor.assign(assignmentSpec, subscribedTopicMetadata));
+        assertEquals(Collections.emptyMap(), groupAssignment.members());
     }
 
     @Test
@@ -587,6 +587,7 @@ public class OptimizedUniformAssignorTest {
         assertAssignment(expectedAssignment, computedAssignment);
         checkValidityAndBalance(members, computedAssignment);
     }
+
     @Test
     public void testReassignmentOnAddingPartitionsWithConsumerAndPartitionRacks() {
         Map<Uuid, TopicMetadata> topicMetadata = new HashMap<>();
@@ -720,11 +721,10 @@ public class OptimizedUniformAssignorTest {
             mkTopicAssignment(topic2Uuid, 1, 2, 3)
         ));
 
-        // TOPIC WISE THE LOAD COULD BE SPLIT BETTER, check what the order is
-        System.out.println("Computed assignment is " + computedAssignment);
         assertAssignment(expectedAssignment, computedAssignment);
         checkValidityAndBalance(members, computedAssignment);
     }
+
     @Test
     public void testReassignmentOnAddingConsumerWithRackAndPartitionRacks() {
         Map<Uuid, TopicMetadata> topicMetadata = new HashMap<>();
@@ -849,7 +849,6 @@ public class OptimizedUniformAssignorTest {
             Arrays.asList(topic1Uuid, topic2Uuid),
             currentAssignmentForB
         ));
-        System.out.println("members in test" + members);
 
         // Add a new consumer to trigger a re-assignment
         members.put(consumerC, new AssignmentMemberSpec(
@@ -997,7 +996,7 @@ public class OptimizedUniformAssignorTest {
 
         AssignmentSpec assignmentSpec = new AssignmentSpec(members);
         GroupAssignment computedAssignment = assignor.assign(assignmentSpec, subscribedTopicMetadata);
-        System.out.println("Computed Assignment " + computedAssignment);
+
         Map<String, Map<Uuid, Set<Integer>>> expectedAssignment = new HashMap<>();
 
         expectedAssignment.put(consumerA, mkAssignment(
@@ -1127,24 +1126,6 @@ public class OptimizedUniformAssignorTest {
                 assertTrue(Math.abs(size1 - size2) <= 1, "Size of one assignment is greater than the other assignment by more than one partition " + size1 + " " + size2 + "abs = " + Math.abs(size1 - size2));
             }
         }
-    }
-
-    /**
-     * Verifies that each member has the expected number of sticky partitions. Function has to be called per member.
-     *
-     * @param expectedNumberOfStickyPartitionsForMember: the number of partitions that we expect to retain from the prev assignment
-     * @param prevAssignmentForMember: previous assignment of the member
-     * @param computedAssignmentForMember: computed assignment of the member
-     */
-    private void assertStickinessForMember(Integer expectedNumberOfStickyPartitionsForMember, Map<Uuid, Set<Integer>> prevAssignmentForMember, Map<Uuid, Set<Integer>> computedAssignmentForMember) {
-        int numberOfStickyPartitions = 0;
-        for (Uuid topicId : computedAssignmentForMember.keySet()) {
-            Set<Integer> intersection = prevAssignmentForMember.getOrDefault(topicId, new HashSet<>());
-            intersection.retainAll(computedAssignmentForMember.get(topicId));
-            numberOfStickyPartitions += intersection.size();
-        }
-        System.out.println("number of sticky partitions " + numberOfStickyPartitions);
-        assertTrue(numberOfStickyPartitions >= expectedNumberOfStickyPartitionsForMember, "Expected number of sticky partitions haven't been retained");
     }
 
     private void assertAssignment(Map<String, Map<Uuid, Set<Integer>>> expectedAssignment, GroupAssignment computedGroupAssignment) {

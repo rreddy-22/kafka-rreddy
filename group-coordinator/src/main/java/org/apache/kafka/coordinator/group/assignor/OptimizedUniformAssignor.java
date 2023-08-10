@@ -84,15 +84,20 @@ public class OptimizedUniformAssignor extends UniformAssignor {
 
         subscriptionList = new ArrayList<>(assignmentSpec.members().values().iterator().next().subscribedTopicIds());
 
-        int totalPartitionsCount = subscriptionList.stream()
-            .mapToInt(topicId -> {
-                int partitionCount = subscribedTopicDescriber.numPartitions(topicId);
-                if (partitionCount == -1) {
-                    throw new PartitionAssignorException("Subscribed topic Id doesn't exist in topic metadata");
-                }
-                return partitionCount;
-            })
-            .sum();
+        int totalPartitionsCount = 0;
+
+        Iterator<Uuid> iterator = subscriptionList.iterator();
+        while (iterator.hasNext()) {
+            Uuid topicId = iterator.next();
+            int partitionCount = subscribedTopicDescriber.numPartitions(topicId);
+            // removes the current topic from subscriptionList if the topic doesn't exist.
+            if (partitionCount == -1) {
+                log.warn("Members are subscribed to topic " + topicId + " which doesn't exist in the topic metadata.");
+                iterator.remove();
+            } else {
+                totalPartitionsCount += partitionCount;
+            }
+        }
 
         RackInfo rackInfo = new RackInfo(assignmentSpec, subscribedTopicDescriber, subscriptionList);
         this.rackInfo = rackInfo;
@@ -189,6 +194,7 @@ public class OptimizedUniformAssignor extends UniformAssignor {
                 potentiallyUnfilledMembers.put(memberId, remaining);
             }
         });
+
         return allAssignedStickyPartitions;
     }
 
@@ -221,11 +227,8 @@ public class OptimizedUniformAssignor extends UniformAssignor {
                     }
                 }
             }
-            if (subscribedTopicDescriber.numPartitions(topicId) == -1) {
-                log.warn("Members are subscribed to topic " + topicId + " which doesn't exist in the topic metadata.");
-                subscriptionList.remove(topicId);
-            }
         });
+
         return validCurrentAssignmentList;
     }
 
