@@ -35,47 +35,47 @@ import java.util.Set;
 import static java.lang.Math.min;
 
 /**
- * <p>
- * Only used when all members have identical subscriptions.
- * Steps followed to get the most sticky and balanced assignment possible :-
- * <ol>
- *      <li> In case of a reassignment i.e. when a previous assignment exists: </li>
- *      <ul>
- *          <li> Obtain a valid prev assignment by selecting the assignments that have topics present in both the topic metadata and the members subscriptions.</li>
- *          <li> Get sticky partitions from the prev valid assignment using the newly decided quotas.</li>
- *      </ul>
- *      <li> Obtain the unassigned partitions from the difference between total partitions and assigned sticky partitions.</li>
- *      <li> Obtain a list of potentially unfilled members based on the minimum quotas.</li>
- *      <li> Populate the unfilled members map (member, remaining) after accounting for the additional partitions that might have to be assigned. </li>
- *      <li> Allocate all unassigned partitions to the unfilled members. </li>
- * </ol>
- * </p>
+ * Assigns Kafka partitions to members of a consumer group ensuring a balanced distribution with
+ * considerations for sticky assignments and rack-awareness.
+ *
+ * <p> Here's the step-by-step breakdown of the assignment process:
+ *
+ * <ul>
+ *     <li> Compute the quotas of partitions for each member based on the total partitions and member count.</li>
+ *     <li> For existing assignments, retain partitions based on the determined quota and member's rack compatibility.
+ *     <li> If a partition's rack mismatches with its member, track it with its prior owner.</li>
+ *     <li> Identify members that haven't fulfilled their partition quota or are eligible to receive extra partitions.</li>
+ *     <li> Derive the unassigned partitions by taking the difference between total partitions and the sticky assignments.</li>
+ *     <li> Depending on members needing extra partitions, select members from the potentially unfilled list and add them to the unfilled list.</li>
+ *     <li> Proceed with a round-robin assignment adhering to rack awareness.
+ *          For each unassigned partition, locate the first compatible member from the unfilled list.</li>
+ *     <li> If no rack-compatible member is found, revert to the tracked previous owner.
+ *          If that member can't accommodate the partition due to quota limits, resort to a generic round-robin assignment.</li>
+ * </ul>
  */
 public class OptimizedUniformAssignor extends UniformAssignor {
     private static final Logger log = LoggerFactory.getLogger(OptimizedUniformAssignor.class);
-    // Subscription list is the same for all members.
+    // List of topics subscribed to by all members.
     private final List<Uuid> subscriptionList;
     private final AssignmentSpec assignmentSpec;
     private final SubscribedTopicDescriber subscribedTopicDescriber;
     private final RackInfo rackInfo;
-    private int totalValidPartitionsCount;
     // The minimum required quota that each member needs to meet.
     private final int minQuota;
-    // The expected number of members receiving one more than the minQuota partitions.
+    // Count of members expected to receive an extra partition beyond the minimum quota.
     private int expectedNumMembersWithExtraPartition;
-    // Members that haven't met the min quota OR that have met the min quota but could potentially get an extra partition.
-    // Map<memberId, remaining> where remaining = number of partitions remaining to meet the min Quota.
+    // Map of members to their remaining partitions needed to meet the minimum quota,
+    // including members eligible for an extra partition.
     private final Map<String, Integer> potentiallyUnfilledMembers;
-    // Members that need to be assigned the remaining number of partitions including extra partitions.
+    // Members mapped to the number of partitions they still need to meet the quota.
     private Map<String, Integer> unfilledMembers;
-    // Partitions that are available to be assigned, computed by taking the difference between total partitions and assigned sticky partitions.
+    // Partitions that still need to be assigned.
     private List<TopicIdPartition> unassignedPartitions;
-
     private final Map<String, MemberAssignment> newAssignment;
-    // Partition to previous owner, used only with rack aware strategy.
+    // Tracks the previous owner of each partition when using rack-aware strategy.
     private final Map<TopicIdPartition, String> partitionToPrevOwner;
-
-    // If consumer and partition rack information is available this is true.
+    // Indicates if a rack aware assignment can be made.
+    // True if racks are defined for both members and partitions.
     boolean useRackAwareStrategy;
 
     OptimizedUniformAssignor(AssignmentSpec assignmentSpec, SubscribedTopicDescriber subscribedTopicDescriber) {
@@ -83,13 +83,15 @@ public class OptimizedUniformAssignor extends UniformAssignor {
         this.assignmentSpec = assignmentSpec;
 
         subscriptionList = new ArrayList<>(assignmentSpec.members().values().iterator().next().subscribedTopicIds());
-        if (subscriptionList.isEmpty()) {
-            log.info("Subscriptions list is empty, returning empty assignment");
-            throw new PartitionAssignorException("There are no valid topic subscriptions");
-        }
 
-        totalValidPartitionsCount = subscriptionList.stream()
-            .mapToInt(subscribedTopicDescriber::numPartitions)
+        int totalPartitionsCount = subscriptionList.stream()
+            .mapToInt(topicId -> {
+                int partitionCount = subscribedTopicDescriber.numPartitions(topicId);
+                if (partitionCount == -1) {
+                    throw new PartitionAssignorException("Subscribed topic Id doesn't exist in topic metadata");
+                }
+                return partitionCount;
+            })
             .sum();
 
         RackInfo rackInfo = new RackInfo(assignmentSpec, subscribedTopicDescriber, subscriptionList);
@@ -108,11 +110,15 @@ public class OptimizedUniformAssignor extends UniformAssignor {
         newAssignment = new HashMap<>();
 
         int numberOfMembers = assignmentSpec.members().size();
-        minQuota = (int) Math.floor(((double) totalValidPartitionsCount) / numberOfMembers);
-        expectedNumMembersWithExtraPartition = totalValidPartitionsCount % numberOfMembers;
+        minQuota = (int) Math.floor(((double) totalPartitionsCount) / numberOfMembers);
+        expectedNumMembersWithExtraPartition = totalPartitionsCount % numberOfMembers;
     }
 
      protected GroupAssignment build() {
+         if (subscriptionList.isEmpty()) {
+             log.info("Subscriptions list is empty, returning empty assignment");
+             return new GroupAssignment(Collections.emptyMap());
+         }
 
         assignmentSpec.members().forEach((memberId, assignmentMemberSpec) ->
             newAssignment.put(memberId, new MemberAssignment(new HashMap<>()))
@@ -121,12 +127,12 @@ public class OptimizedUniformAssignor extends UniformAssignor {
         Set<TopicIdPartition> allAssignedStickyPartitions = getAssignedStickyPartitions();
 
         unassignedPartitions = getUnassignedPartitions(allAssignedStickyPartitions);
-
         unfilledMembers = getUnfilledMembers();
 
         if (!ensureTotalUnassignedPartitionsEqualsTotalRemainingAssignments()) {
             log.warn("Number of available partitions is not equal to the total requirement");
         }
+
         if (useRackAwareStrategy) rackAwareRoundRobinAssignment();
         unassignedPartitionsRoundRobinAssignment();
 
@@ -134,16 +140,19 @@ public class OptimizedUniformAssignor extends UniformAssignor {
     }
 
     /**
-     * Retains valid existing partition assignments and identifies members that may require more partitions.
+     * Retrieves a set of sticky partitions that were previously assigned to members, by ensuring
+     * that the partitions are still relevant based on current topic metadata and subscriptions.
+     * If rack awareness is enabled, it ensures that a partition's rack matches the member's rack.
      *
-     * <p>The method filters and retains partitions by:
+     * <p> For each member, it:
      * <ul>
-     *   <li> Validating each member's current assignments against available subscriptions.</li>
-     *   <li> If rack awareness is enabled, ensuring partitions' racks match the consumer member's rack.</li>
+     *     <li> Finds the valid current assignment considering topic subscriptions and metadata.</li>
+     *     <li> If current assignments exist, retains up to the minimum quota of assignments.</li>
+     *     <li> If there are members that should get an extra partition, assigns the next partition after the retained ones.</li>
+     *     <li> For members with assignments not exceeding the minimum quota, it identifies them as potentially unfilled members and tracks the remaining quota.</li>
      * </ul>
-     * Members potentially requiring more partitions to meet the minimum quota are also identified.
      *
-     * @return A set of validly retained partitions across all members.
+     * @return A set containing all the sticky partitions that have been retained in the new assignment.
      */
     private Set<TopicIdPartition> getAssignedStickyPartitions() {
         Set<TopicIdPartition> allAssignedStickyPartitions = new HashSet<>();
@@ -157,7 +166,6 @@ public class OptimizedUniformAssignor extends UniformAssignor {
             int remaining = minQuota - currentAssignmentSize;
 
             if (currentAssignmentSize > 0) {
-
                 int retainedPartitionsCount = min(currentAssignmentSize, minQuota);
                 for (int i = 0; i < retainedPartitionsCount; i++) {
                     newAssignment.get(memberId)
@@ -181,7 +189,6 @@ public class OptimizedUniformAssignor extends UniformAssignor {
                 potentiallyUnfilledMembers.put(memberId, remaining);
             }
         });
-
         return allAssignedStickyPartitions;
     }
 
@@ -204,7 +211,6 @@ public class OptimizedUniformAssignor extends UniformAssignor {
 
         assignedPartitions.forEach((topicId, currentAssignment) -> {
             List<Integer> currentAssignmentList = new ArrayList<>(currentAssignment);
-
             if (subscriptionList.contains(topicId)) {
                 for (Integer partition : currentAssignmentList) {
                     TopicIdPartition topicIdPartition = new TopicIdPartition(topicId, partition);
@@ -216,11 +222,10 @@ public class OptimizedUniformAssignor extends UniformAssignor {
                 }
             }
             if (subscribedTopicDescriber.numPartitions(topicId) == -1) {
-                throw new PartitionAssignorException("Members are subscribed to topic " +
-                        topicId + " which doesn't exist in the topic metadata");
+                log.warn("Members are subscribed to topic " + topicId + " which doesn't exist in the topic metadata.");
+                subscriptionList.remove(topicId);
             }
         });
-
         return validCurrentAssignmentList;
     }
 
@@ -231,23 +236,27 @@ public class OptimizedUniformAssignor extends UniformAssignor {
     private void rackAwareRoundRobinAssignment() {
         Queue<String> roundRobinMembers = new LinkedList<>(unfilledMembers.keySet());
 
-        // Sorts partitions in ascending order by number of potential consumers in with matching racks.
+        // Sorts partitions in ascending order by number of potential consumers with matching racks.
         rackInfo.sortPartitionsByRackConsumers(unassignedPartitions);
 
         Iterator<TopicIdPartition> partitionIterator = unassignedPartitions.iterator();
         while (partitionIterator.hasNext()) {
             TopicIdPartition partition = partitionIterator.next();
             boolean assigned = false;
-
-            for (int i = 0; i < unfilledMembers.size() && !assigned; i++) {
+            for (int i = 0; i < roundRobinMembers.size() && !assigned; i++) {
                 String memberId = roundRobinMembers.poll();
+                Integer memberCount = unfilledMembers.get(memberId);
 
-                if (unfilledMembers.get(memberId) > 0 && !rackInfo.racksMismatch(memberId, partition)) {
+                if (memberCount != null && memberCount > 0 && !rackInfo.racksMismatch(memberId, partition)) {
                     assignPartitionToMember(memberId, partition);
                     assigned = true;
                     partitionIterator.remove();
                 }
-                roundRobinMembers.add(memberId);
+
+                // Only re-add to the end of the queue if it's still in the unfilledMembers map
+                if (unfilledMembers.containsKey(memberId)) {
+                    roundRobinMembers.add(memberId);
+                }
             }
         }
     }
@@ -273,19 +282,23 @@ public class OptimizedUniformAssignor extends UniformAssignor {
                     assignPartitionToMember(prevOwner, partition);
                     assigned = true;
                     partitionIterator.remove();
+                    if (!unfilledMembers.containsKey(prevOwner)) {
+                        roundRobinMembers.remove(prevOwner);
+                    }
                 }
             }
 
             for (int i = 0; i < unfilledMembers.size() && !assigned; i++) {
                 String memberId = roundRobinMembers.poll();
-
                 if (unfilledMembers.get(memberId) > 0) {
                     assignPartitionToMember(memberId, partition);
                     assigned = true;
                     partitionIterator.remove();
                 }
-
-                roundRobinMembers.add(memberId);
+                // Only re-add to the end of the queue if it's still in the unfilledMembers map.
+                if (unfilledMembers.containsKey(memberId)) {
+                    roundRobinMembers.add(memberId);
+                }
             }
         }
     }
@@ -357,7 +370,6 @@ public class OptimizedUniformAssignor extends UniformAssignor {
 
         for (Uuid topic : sortedAllTopics) {
             int partitionCount = subscribedTopicDescriber.numPartitions(topic);
-
             for (int i = 0; i < partitionCount; i++) {
                 TopicIdPartition partition = new TopicIdPartition(topic, i);
                 if (!allAssignedStickyPartitions.contains(partition)) {
@@ -365,7 +377,6 @@ public class OptimizedUniformAssignor extends UniformAssignor {
                 }
             }
         }
-
         return unassignedPartitions;
     }
 

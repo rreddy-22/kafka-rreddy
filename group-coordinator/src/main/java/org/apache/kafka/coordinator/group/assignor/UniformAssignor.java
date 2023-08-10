@@ -16,7 +16,6 @@
  */
 package org.apache.kafka.coordinator.group.assignor;
 
-import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.coordinator.group.common.TopicIdPartition;
 import org.apache.kafka.common.Uuid;
 import org.slf4j.Logger;
@@ -39,8 +38,6 @@ public class UniformAssignor implements PartitionAssignor {
     private static final Logger log = LoggerFactory.getLogger(UniformAssignor.class);
     public static final String UNIFORM_ASSIGNOR_NAME = "uniform";
 
-    // Used only in unit tests to verify rack-aware assignment when all racks have all partitions.
-    boolean preferRackAwareLogic;
     @Override
     public String name() {
         return UNIFORM_ASSIGNOR_NAME;
@@ -86,8 +83,6 @@ public class UniformAssignor implements PartitionAssignor {
     protected boolean useRackAwareAssignment(Set<String> consumerRacks, Set<String> partitionRacks, Map<TopicIdPartition, Set<String>> racksPerPartition) {
         if (consumerRacks.isEmpty() || Collections.disjoint(consumerRacks, partitionRacks))
             return false;
-        else if (preferRackAwareLogic)
-            return true;
         else {
             return !racksPerPartition.values().stream().allMatch(partitionRacks::equals);
         }
@@ -125,7 +120,7 @@ public class UniformAssignor implements PartitionAssignor {
                 topicIdPartitions.forEach(tp -> {
                     Set<String> racks = subscribedTopicDescriber.racksForPartition(tp.topicId(), tp.partition());
                     partitionRacks.put(tp, racks);
-                    allPartitionRacks.addAll(racks);
+                    if (!racks.isEmpty()) allPartitionRacks.addAll(racks);
                 });
             }
 
@@ -143,33 +138,48 @@ public class UniformAssignor implements PartitionAssignor {
                     .reduce(0, Integer::sum)));
         }
 
-        protected boolean racksMismatch(String consumer, TopicIdPartition tp) {
-            String consumerRack = consumerRacks.get(consumer);
+        /**
+         * Determines if there's a mismatch between the memberId's rack and the partition's replica racks.
+         *
+         * <p> Mismatch conditions (returns {@code true}):
+         * <ul>
+         *     <li> Consumer lacks an associated rack.</li>
+         *     <li> Partition lacks associated replica racks.</li>
+         *     <li> Consumer's rack isn't among the partition's replica racks.</li>
+         * </ul>
+         *
+         * @param memberId      The memberId identifier.
+         * @param tp            The topic partition in question.
+         * @return {@code true} for a mismatch; {@code false} if member and partition racks exist and align.
+         */
+        protected boolean racksMismatch(String memberId, TopicIdPartition tp) {
+            String consumerRack = consumerRacks.get(memberId);
             Set<String> replicaRacks = partitionRacks.get(tp);
-            return consumerRack != null && (replicaRacks == null || !replicaRacks.contains(consumerRack));
+            return consumerRack == null || (replicaRacks == null || !replicaRacks.contains(consumerRack));
         }
 
+        /**
+         * Sorts the given list of partitions based on the number of consumers available for each partition
+         * in a rack-aware manner.
+         *
+         * @param partitions    The list of partitions to be sorted.
+         * @return A sorted linked list of partitions. Using a linked list provides fast updates for rack-aware assignments.
+         */
         protected List<TopicIdPartition> sortPartitionsByRackConsumers(List<TopicIdPartition> partitions) {
             if (numConsumersByPartition.isEmpty())
                 return partitions;
-            // Return a sorted linked list of partitions to enable fast updates during rack-aware assignment
+
             List<TopicIdPartition> sortedPartitions = new LinkedList<>(partitions);
             sortedPartitions.sort(Comparator.comparing(tp -> numConsumersByPartition.getOrDefault(tp, 0)));
             return sortedPartitions;
         }
 
-        private int nextRackConsumer(TopicIdPartition tp, List<String> consumerList, int firstIndex) {
-            Set<String> racks = partitionRacks.get(tp);
-            if (racks == null || racks.isEmpty())
-                return -1;
-            for (int i = 0; i < consumerList.size(); i++) {
-                int index = (firstIndex + i) % consumerList.size();
-                String consumer = consumerList.get(index);
-                String consumerRack = consumerRacks.get(consumer);
-                if (consumerRack != null && racks.contains(consumerRack))
-                    return index;
-            }
-            return -1;
+        @Override
+        public String toString() {
+            return "RackInfo(" +
+                "consumerRacks=" + consumerRacks +
+                ", partitionRacks=" + partitionRacks +
+                ")";
         }
     }
 }

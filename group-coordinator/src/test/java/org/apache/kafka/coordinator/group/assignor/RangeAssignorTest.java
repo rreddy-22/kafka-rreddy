@@ -103,9 +103,9 @@ public class RangeAssignorTest {
         );
 
         AssignmentSpec assignmentSpec = new AssignmentSpec(members);
+        GroupAssignment groupAssignment = assignor.assign(assignmentSpec, subscribedTopicMetadata);
 
-        assertThrows(PartitionAssignorException.class,
-            () -> assignor.assign(assignmentSpec, subscribedTopicMetadata));
+        assertEquals(Collections.emptyMap(), groupAssignment.members());
     }
 
     @Test

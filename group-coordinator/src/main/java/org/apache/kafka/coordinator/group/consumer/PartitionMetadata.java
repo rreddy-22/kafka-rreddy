@@ -61,7 +61,7 @@ public class PartitionMetadata {
      *         If no rack information is available, an empty set is returned.
      */
     public Set<String> racks(int partition) {
-        if(partitionsWithRacks.isEmpty()) {
+        if (partitionsWithRacks.isEmpty()) {
             return Collections.emptySet();
         }
         return partitionsWithRacks.get(partition);

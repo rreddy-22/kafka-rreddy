@@ -17,6 +17,8 @@
 package org.apache.kafka.coordinator.group.assignor;
 
 import org.apache.kafka.common.Uuid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -49,6 +51,8 @@ import static java.lang.Math.min;
  * </ol>
  */
 public class RangeAssignor implements PartitionAssignor {
+    private static final Logger log = LoggerFactory.getLogger(RangeAssignor.class);
+
     public static final String RANGE_ASSIGNOR_NAME = "range";
 
     @Override
@@ -94,11 +98,13 @@ public class RangeAssignor implements PartitionAssignor {
             Collection<Uuid> topics = memberMetadata.subscribedTopicIds();
             for (Uuid topicId : topics) {
                 if (subscribedTopicDescriber.numPartitions(topicId) == -1) {
-                    throw new PartitionAssignorException("Member is subscribed to a non-existent topic");
+                    log.warn("Members are subscribed to topic " + topicId + " which doesn't exist in the topic metadata.");
                 }
-                membersPerTopic
-                    .computeIfAbsent(topicId, k -> new ArrayList<>())
-                    .add(memberId);
+                else {
+                    membersPerTopic
+                        .computeIfAbsent(topicId, k -> new ArrayList<>())
+                        .add(memberId);
+                }
             }
         });
 
