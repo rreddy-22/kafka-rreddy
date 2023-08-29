@@ -81,7 +81,6 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
             System.out.println("RETAIN STICKY PART");
             int numPartitionsForTopic = metadataPerTopic.get(topicId).numPartitions();
             int numSubscribedMembers = subscribedMembers.size();
-
             Map<String, Integer> sortedSubscribedMembersWithTotalAssignmentSize = getSortedSubscribedMembersWithTotalAssignmentSize(subscribedMembers);
             System.out.println("Sorted subscribed members by total current assignment size for topic id " + topicId + "is " + sortedSubscribedMembersWithTotalAssignmentSize);
             // Sum of total number of partitions assigned to all subscribed members so far.
