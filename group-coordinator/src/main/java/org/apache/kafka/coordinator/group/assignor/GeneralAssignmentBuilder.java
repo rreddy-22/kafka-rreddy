@@ -84,7 +84,6 @@ public class GeneralAssignmentBuilder extends UniformAssignor.AbstractAssignment
 
             Map<String, Integer> sortedSubscribedMembersWithTotalAssignmentSize = getSortedSubscribedMembersWithTotalAssignmentSize(subscribedMembers);
             System.out.println("Sorted subscribed members by total current assignment size for topic id " + topicId + "is " + sortedSubscribedMembersWithTotalAssignmentSize);
-
             // Sum of total number of partitions assigned to all subscribed members so far.
             int totalPartitionsCurrentlyAssigned = sortedSubscribedMembersWithTotalAssignmentSize.values().stream().mapToInt(Integer::intValue).sum();
             System.out.println("New assignment " + newAssignment + "total partitions currently assigned " + totalPartitionsCurrentlyAssigned);
