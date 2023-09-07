@@ -85,7 +85,7 @@ public class UniformAssignor implements PartitionAssignor {
                 + "optimized assignment algorithm");
             assignmentBuilder = new OptimizedUniformAssignmentBuilder(assignmentSpec, subscribedTopicDescriber);
         } else {
-            assignmentBuilder = new GeneralUniformAssignmentBuilder();
+            assignmentBuilder = new GeneralUniformAssignmentBuilder(assignmentSpec, subscribedTopicDescriber);
             LOG.debug("Detected that all members are subscribed to a different set of topics, invoking the "
                 + "general assignment algorithm");
         }
@@ -286,7 +286,6 @@ public class UniformAssignor implements PartitionAssignor {
                     ")";
             }
         }
-
     }
 }
 
