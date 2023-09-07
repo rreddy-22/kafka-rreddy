@@ -1015,8 +1015,8 @@ public class OptimizedUniformAssignmentBuilderTest {
      *      - the assignment is fully balanced (the numbers of topic partitions assigned to members differ by at most one), or
      *      - there is no topic partition that can be moved from one member to another with 2+ fewer topic partitions.
      *
-     * @param members                   members data structure from assignmentSpec
-     * @param computedGroupAssignment   given assignment for balance check
+     * @param members                   Members data structure from the assignment Spec.
+     * @param computedGroupAssignment   Assignment computed by the uniform assignor.
      */
     private void checkValidityAndBalance(
         Map<String, AssignmentMemberSpec> members,
@@ -1074,6 +1074,9 @@ public class OptimizedUniformAssignmentBuilderTest {
         }
     }
 
+    /**
+     * Verifies that the expected assignment is equal to the computed assignment for every member in the group.
+     */
     private void assertAssignment(
         Map<String, Map<Uuid, Set<Integer>>> expectedAssignment,
         GroupAssignment computedGroupAssignment

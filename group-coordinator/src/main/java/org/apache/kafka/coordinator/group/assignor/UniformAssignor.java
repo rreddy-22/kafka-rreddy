@@ -34,7 +34,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
- * The Uniform Assignor distributes Kafka topic partitions among group members for balanced assignment.
+ * The Uniform Assignor distributes topic partitions among group members for a balanced assignment.
  * The assignor employs two different strategies based on the nature of topic
  * subscriptions across the group members:
  * <ul>
@@ -64,11 +64,11 @@ public class UniformAssignor implements PartitionAssignor {
 
     /**
      * Perform the group assignment given the current members and
-     * topic metadata.
+     * topics metadata.
      *
-     * @param assignmentSpec                The member assignment spec.
+     * @param assignmentSpec                The assignment specification that included member metadata.
      * @param subscribedTopicDescriber      The topic and cluster metadata describer {@link SubscribedTopicDescriber}.
-     * @return The new assignment for the group.
+     * @return The new target assignment for the group.
      */
     @Override
     public GroupAssignment assign(
@@ -85,7 +85,7 @@ public class UniformAssignor implements PartitionAssignor {
                 + "optimized assignment algorithm");
             assignmentBuilder = new OptimizedUniformAssignmentBuilder(assignmentSpec, subscribedTopicDescriber);
         } else {
-            assignmentBuilder = new GeneralUniformAssignmentBuilder(assignmentSpec, subscribedTopicDescriber);
+            assignmentBuilder = new GeneralUniformAssignmentBuilder();
             LOG.debug("Detected that all members are subscribed to a different set of topics, invoking the "
                 + "general assignment algorithm");
         }
@@ -94,10 +94,10 @@ public class UniformAssignor implements PartitionAssignor {
     }
 
     /**
-     * Determines if all members are subscribed to the same list of topic IDs.
+     * Determines if all members are subscribed to the same list of topic Ids.
      *
-     * @param members       A map of member identifiers to their respective {@code AssignmentMemberSpec}.
-     * @return true if all members have the same subscription list of topic IDs,
+     * @param members       Members mapped to their respective {@code AssignmentMemberSpec}.
+     * @return true if all members have the same subscription list of topic Ids,
      *         false otherwise.
      */
     private boolean allSubscriptionsEqual(Map<String, AssignmentMemberSpec> members) {
@@ -111,10 +111,9 @@ public class UniformAssignor implements PartitionAssignor {
     }
 
     /**
-     * The assignment builder is used to construct the final assignment in a series of steps that
-     * are determined by the type of subscriptions.
+     * The assignment builder is used to construct the target assignment.
      *
-     * There are common methods present that are used by any type of assignment strategy.
+     * This class contains common utility methods and a class for obtaining and storing rack information.
      */
      protected static abstract class AbstractAssignmentBuilder {
         protected abstract GroupAssignment buildAssignment();
@@ -141,19 +140,35 @@ public class UniformAssignor implements PartitionAssignor {
         }
 
         /**
+         * Adds the topic's partition to the member's target assignment.
+         */
+        protected static void addPartitionToAssignment(
+            int partition,
+            Uuid topicId,
+            String memberId,
+            Map<String, MemberAssignment> targetAssignment
+        ) {
+            targetAssignment.get(memberId)
+                .targetPartitions()
+                .computeIfAbsent(topicId, __ -> new HashSet<>())
+                .add(partition);
+        }
+
+        /**
          * Constructs a list of {@code TopicIdPartition} for each topic Id based on its partition count.
          *
-         * @param allTopicIds                   The list of subscribed topic Ids.
+         * @param allTopicIds                   The subscribed topic Ids.
          * @param subscribedTopicDescriber      Utility to fetch the partition count for a given topic.
          *
-         * @return List of generated {@code TopicIdPartition} for all provided topic Ids.
+         * @return List of sorted {@code TopicIdPartition} for all provided topic Ids.
          */
         protected static List<TopicIdPartition> allTopicIdPartitions(
             Collection<Uuid> allTopicIds,
             SubscribedTopicDescriber subscribedTopicDescriber
         ) {
             List<TopicIdPartition> allTopicIdPartitions = new ArrayList<>();
-            allTopicIds.forEach(topic ->
+            // Sorted so that partitions from each topic can be distributed amongst its subscribers equally.
+            allTopicIds.stream().sorted().forEach(topic ->
                 IntStream.range(0, subscribedTopicDescriber.numPartitions(topic))
                     .forEach(i -> allTopicIdPartitions.add(new TopicIdPartition(topic, i))
                 )
@@ -178,7 +193,7 @@ public class UniformAssignor implements PartitionAssignor {
             /**
              * Number of members with the same rack as the partition.
              */
-            private final Map<TopicIdPartition, Integer> numMembersWithSameRackByPartition;
+            private final Map<TopicIdPartition, Integer> numMembersWithSameRackAsPartition;
             /**
              * Indicates if a rack aware assignment can be done.
              * True if racks are defined for both members and partitions and there is an intersection between the sets.
@@ -186,7 +201,7 @@ public class UniformAssignor implements PartitionAssignor {
             protected final boolean useRackStrategy;
 
             /**
-             * Constructs rack information based on assignment specification and subscribed topics.
+             * Constructs rack information based on the assignment specification and subscribed topics.
              *
              * @param assignmentSpec                The current assignment specification.
              * @param subscribedTopicDescriber      Topic and partition metadata of the subscribed topics.
@@ -232,24 +247,24 @@ public class UniformAssignor implements PartitionAssignor {
                     useRackStrategy = false;
                 }
 
-                numMembersWithSameRackByPartition = partitionRacks.entrySet().stream()
+                numMembersWithSameRackAsPartition = partitionRacks.entrySet().stream()
                     .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().stream()
                         .map(r -> membersByRack.getOrDefault(r, Collections.emptyList()).size())
                         .reduce(0, Integer::sum)));
             }
 
             /**
-             * Determines if there's a mismatch between the memberId's rack and the partition's replica racks.
+             * Determines if there's a mismatch between the member's rack and the partition's replica racks.
              *
-             * <p> Mismatch conditions (returns {@code true}):
+             * <p> Racks are considered mismatched under the following conditions: (returns {@code true}):
              * <ul>
-             *     <li> Member lacks an associated rack.</li>
-             *     <li> Partition lacks associated replica racks.</li>
-             *     <li> Member's rack isn't among the partition's replica racks.</li>
+             *     <li> Member lacks an associated rack. </li>
+             *     <li> Partition lacks associated replica racks. </li>
+             *     <li> Member's rack isn't among the partition's replica racks. </li>
              * </ul>
              *
-             * @param memberId      The memberId identifier.
-             * @param tp            The topic partition in question.
+             * @param memberId      The member Id.
+             * @param tp            The topic partition.
              * @return {@code true} for a mismatch; {@code false} if member and partition racks exist and align.
              */
             protected boolean racksMismatch(String memberId, TopicIdPartition tp) {
@@ -259,22 +274,21 @@ public class UniformAssignor implements PartitionAssignor {
             }
 
             /**
-             * Sorts the given list of partitions based on the number of members available for each partition
-             * in a rack-aware manner.
+             * Sort partitions in ascending order by number of members with matching racks.
              *
              * @param partitions    The list of partitions to be sorted.
              * @return A sorted list of partitions with potential members in the same rack.
              */
             protected List<TopicIdPartition> sortPartitionsByRackMembers(List<TopicIdPartition> partitions) {
-                if (numMembersWithSameRackByPartition.isEmpty())
+                if (numMembersWithSameRackAsPartition.isEmpty())
                     return partitions;
 
                 return partitions.stream()
                     .filter(tp -> {
-                        Integer count = numMembersWithSameRackByPartition.get(tp);
+                        Integer count = numMembersWithSameRackAsPartition.get(tp);
                         return count != null && count > 0;
                     })
-                    .sorted(Comparator.comparing(tp -> numMembersWithSameRackByPartition.getOrDefault(tp, 0)))
+                    .sorted(Comparator.comparing(tp -> numMembersWithSameRackAsPartition.getOrDefault(tp, 0)))
                     .collect(Collectors.toList());
             }
 
@@ -286,6 +300,7 @@ public class UniformAssignor implements PartitionAssignor {
                     ")";
             }
         }
+
     }
 }
 
