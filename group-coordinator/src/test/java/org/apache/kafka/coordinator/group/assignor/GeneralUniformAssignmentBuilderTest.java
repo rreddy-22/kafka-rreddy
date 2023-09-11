@@ -21,6 +21,7 @@ import org.apache.kafka.coordinator.group.consumer.SubscribedTopicMetadata;
 import org.apache.kafka.coordinator.group.consumer.TopicMetadata;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -91,8 +92,10 @@ public class GeneralUniformAssignmentBuilderTest {
         GeneralUniformAssignmentBuilder generalAssignmentBuilder =
             new GeneralUniformAssignmentBuilder(assignmentSpec, subscribedTopicMetadata);
 
+        List<Uuid> sortedTopics = new ArrayList<>(topicMetadata.keySet());
+        generalAssignmentBuilder.sortTopics(new ArrayList<>(topicMetadata.keySet()));
+
         // T1 = 6/3 || T2 = 3/1 || T3 = 2/1
-        List<Uuid> sortedTopics = generalAssignmentBuilder.sortedTopics();
         assertEquals(Arrays.asList(topic2Uuid, topic3Uuid, topic1Uuid), sortedTopics);
     }
 }

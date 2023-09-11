@@ -85,7 +85,7 @@ public class UniformAssignor implements PartitionAssignor {
                 + "optimized assignment algorithm");
             assignmentBuilder = new OptimizedUniformAssignmentBuilder(assignmentSpec, subscribedTopicDescriber);
         } else {
-            assignmentBuilder = new GeneralUniformAssignmentBuilder();
+            assignmentBuilder = new GeneralUniformAssignmentBuilder(assignmentSpec, subscribedTopicDescriber);
             LOG.debug("Detected that all members are subscribed to a different set of topics, invoking the "
                 + "general assignment algorithm");
         }
@@ -193,7 +193,7 @@ public class UniformAssignor implements PartitionAssignor {
             /**
              * Number of members with the same rack as the partition.
              */
-            private final Map<TopicIdPartition, Integer> numMembersWithSameRackAsPartition;
+            private final Map<TopicIdPartition, List<String>> membersWithSameRackAsPartition;
             /**
              * Indicates if a rack aware assignment can be done.
              * True if racks are defined for both members and partitions and there is an intersection between the sets.
@@ -247,10 +247,20 @@ public class UniformAssignor implements PartitionAssignor {
                     useRackStrategy = false;
                 }
 
-                numMembersWithSameRackAsPartition = partitionRacks.entrySet().stream()
-                    .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().stream()
-                        .map(r -> membersByRack.getOrDefault(r, Collections.emptyList()).size())
-                        .reduce(0, Integer::sum)));
+                this.membersWithSameRackAsPartition = partitionRacks.entrySet().stream()
+                    .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> entry.getValue().stream()
+                            .flatMap(rack -> membersByRack.getOrDefault(rack, Collections.emptyList()).stream())
+                            .collect(Collectors.toList())
+                    ));
+            }
+
+            /**
+             * @return List of members with the same rack as any of the provided partition's replicas.
+             */
+            protected List<String> getMembersWithMatchingRack(TopicIdPartition topicIdPartition) {
+                return membersWithSameRackAsPartition.getOrDefault(topicIdPartition, Collections.emptyList());
             }
 
             /**
@@ -280,15 +290,17 @@ public class UniformAssignor implements PartitionAssignor {
              * @return A sorted list of partitions with potential members in the same rack.
              */
             protected List<TopicIdPartition> sortPartitionsByRackMembers(List<TopicIdPartition> partitions) {
-                if (numMembersWithSameRackAsPartition.isEmpty())
+                if (membersWithSameRackAsPartition.isEmpty())
                     return partitions;
 
                 return partitions.stream()
                     .filter(tp -> {
-                        Integer count = numMembersWithSameRackAsPartition.get(tp);
+                        Integer count = membersWithSameRackAsPartition.get(tp).size();
                         return count != null && count > 0;
                     })
-                    .sorted(Comparator.comparing(tp -> numMembersWithSameRackAsPartition.getOrDefault(tp, 0)))
+                    .sorted(Comparator.comparing(tp -> membersWithSameRackAsPartition
+                        .getOrDefault(tp, Collections.emptyList()).size()
+                    ))
                     .collect(Collectors.toList());
             }
 
