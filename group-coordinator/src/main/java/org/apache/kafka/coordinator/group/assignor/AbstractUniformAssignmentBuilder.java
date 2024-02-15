@@ -88,11 +88,14 @@ public abstract class AbstractUniformAssignmentBuilder {
         Collection<Uuid> topicIds,
         SubscribedTopicDescriber subscribedTopicDescriber
     ) {
-        return topicIds.stream()
-            .flatMap(topic -> IntStream
-                .range(0, subscribedTopicDescriber.numPartitions(topic))
-                .mapToObj(i -> new TopicIdPartition(topic, i))
-            ).collect(Collectors.toSet());
+        Set<TopicIdPartition> result = new HashSet<>();
+        for (Uuid topicId : topicIds) {
+            int numPartitions = subscribedTopicDescriber.numPartitions(topicId);
+            for (int i = 0; i < numPartitions; i++) {
+                result.add(new TopicIdPartition(topicId, i));
+            }
+        }
+        return result;
     }
 
     /**
@@ -244,15 +247,19 @@ public abstract class AbstractUniformAssignmentBuilder {
                 topicIdPartition,
                 Collections.emptyList()
             );
-
             // Sort the list based on the size of each member's assignment.
-            membersList.sort((member1, member2) -> {
-                int sum1 = assignment.get(member1).targetPartitions().values().stream().mapToInt(Set::size).sum();
-                int sum2 = assignment.get(member2).targetPartitions().values().stream().mapToInt(Set::size).sum();
-
-                return Integer.compare(sum1, sum2);
-            });
-
+            membersList.sort(Comparator.comparingInt(member -> {
+                    try {
+                        MemberAssignment memberAssignment = assignment.get(member);
+                        return memberAssignment.targetPartitions().values().stream().mapToInt(Set::size).sum();
+                    }
+                    catch (NullPointerException e) {
+                        System.out.println("member" + member + "for partition " + topicIdPartition);
+                        System.out.println("assignment is " + assignment);
+                        System.out.println("assignment 1 is " + assignment.get(member).targetPartitions());
+                        throw new NullPointerException();
+                    }
+                }));
             return membersList;
         }
 

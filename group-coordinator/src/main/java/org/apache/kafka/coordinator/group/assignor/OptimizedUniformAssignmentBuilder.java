@@ -23,7 +23,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -31,7 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static java.lang.Math.min;
@@ -146,13 +144,7 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
 
         for (Uuid topicId : subscribedTopicIds) {
             int partitionCount = subscribedTopicDescriber.numPartitions(topicId);
-            if (partitionCount == -1) {
-                throw new PartitionAssignorException(
-                    "Members are subscribed to topic " + topicId + " which doesn't exist in the topic metadata."
-                );
-            } else {
-                totalPartitionsCount += partitionCount;
-            }
+            totalPartitionsCount += partitionCount;
         }
 
         // The minimum required quota that each member needs to meet for a balanced assignment.
@@ -293,7 +285,6 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
         // Sort partitions in ascending order by number of potential members with matching racks.
         // Partitions with no potential members in the same rack aren't included in this list.
         List<TopicIdPartition> sortedPartitions = rackInfo.sortPartitionsByRackMembers(unassignedPartitions);
-
         sortedPartitions.forEach(partition -> {
             List<String> sortedMembersWithMatchingRack = rackInfo.getSortedMembersWithMatchingRack(partition, targetAssignment);
 
@@ -320,11 +311,12 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
 
         // Partitions are sorted to ensure an even topic wise distribution across members.
         // This not only balances the load but also makes partition-to-member mapping more predictable.
-        List<TopicIdPartition> sortedPartitionsList = unassignedPartitions.stream()
+        /*List<TopicIdPartition> sortedPartitionsList = unassignedPartitions.stream()
             .sorted(Comparator.comparing(TopicIdPartition::topicId).thenComparing(TopicIdPartition::partitionId))
-            .collect(Collectors.toList());
+            .collect(Collectors.toList());*/
+        List<TopicIdPartition> unassignedPartitions2 = new ArrayList<>(unassignedPartitions);
 
-        for (TopicIdPartition topicIdPartition : sortedPartitionsList) {
+        for (TopicIdPartition topicIdPartition : unassignedPartitions2) {
             boolean assigned = false;
 
             if (rackInfo.useRackStrategy && currentPartitionOwners.containsKey(topicIdPartition)) {

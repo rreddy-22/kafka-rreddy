@@ -43,7 +43,7 @@ import java.util.concurrent.TimeUnit;
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
 public class ServerSideAssignorBenchmark {
 
-    @Param({"8"})
+    @Param({"100"})
     private int partitionsPerTopicCount;
 
     @Param({"10"})
@@ -52,13 +52,13 @@ public class ServerSideAssignorBenchmark {
     @Param({"10"})
     private int memberCount;
 
-    @Param({"false", "true"})
+    @Param({"true"})
     private boolean isRackAware;
 
-    @Param({"false", "true"})
+    @Param({"true"})
     private boolean isSubscriptionUniform;
 
-    @Param({"false", "true"})
+    @Param({"false"})
     private boolean isRangeAssignor;
 
     private PartitionAssignor partitionAssignor;

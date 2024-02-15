@@ -38,22 +38,22 @@ import static org.apache.kafka.clients.consumer.internals.AbstractStickyAssignor
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
 public class ClientSideAssignorBenchmark {
 
-    @Param({"200"})
+    @Param({"100"})
     private int partitionsPerTopicCount;
 
-    @Param({"1000"})
+    @Param({"10"})
     private int topicCount;
 
-    @Param({"20"})
+    @Param({"10"})
     private int memberCount;
 
-    @Param({"false", "true"})
+    @Param({"false"})
     private boolean isRackAware;
 
-    @Param({"false", "true"})
+    @Param({"true"})
     private boolean isSubscriptionUniform;
 
-    @Param({"false", "true"})
+    @Param({"false"})
     private boolean isRangeAssignor;
 
     private final Map<String, ConsumerPartitionAssignor.Subscription> subscriptions = new HashMap<>();
