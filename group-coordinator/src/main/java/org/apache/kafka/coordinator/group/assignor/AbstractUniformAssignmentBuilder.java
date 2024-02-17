@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -249,17 +250,15 @@ public abstract class AbstractUniformAssignmentBuilder {
             );
             // Sort the list based on the size of each member's assignment.
             membersList.sort(Comparator.comparingInt(member -> {
-                    try {
-                        MemberAssignment memberAssignment = assignment.get(member);
-                        return memberAssignment.targetPartitions().values().stream().mapToInt(Set::size).sum();
-                    }
-                    catch (NullPointerException e) {
-                        System.out.println("member" + member + "for partition " + topicIdPartition);
-                        System.out.println("assignment is " + assignment);
-                        System.out.println("assignment 1 is " + assignment.get(member).targetPartitions());
-                        throw new NullPointerException();
-                    }
-                }));
+                MemberAssignment memberAssignment = assignment.get(member);
+                if (memberAssignment == null || memberAssignment.targetPartitions() == null) {
+                    System.out.println("found numm member assignment or target assignment");
+                    return 0;
+                }
+                // Use a simple operation to test
+                return memberAssignment.targetPartitions().size();
+            }));
+
             return membersList;
         }
 
