@@ -6,6 +6,7 @@ import org.apache.kafka.clients.consumer.RangeAssignor;
 import org.apache.kafka.clients.consumer.internals.AbstractPartitionAssignor;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
+import org.apache.kafka.common.TopicPartition;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -56,6 +57,9 @@ public class ClientSideAssignorBenchmark {
     @Param({"false"})
     private boolean isRangeAssignor;
 
+    @Param({"true"})
+    private boolean isReassignment;
+
     private final Map<String, ConsumerPartitionAssignor.Subscription> subscriptions = new HashMap<>();
 
     private final int numBrokerRacks = 3;
@@ -81,6 +85,22 @@ public class ClientSideAssignorBenchmark {
             this.assignor = new RangeAssignor();
         } else {
             this.assignor = new CooperativeStickyAssignor();
+        }
+
+        if (isReassignment) {
+            Map<String, List<TopicPartition>> initialAssignment = assignor.assignPartitions(partitionsPerTopic, subscriptions);
+            Map<String, ConsumerPartitionAssignor.Subscription> prevSubscriptions = this.subscriptions;
+            this.subscriptions.clear();
+            prevSubscriptions.keySet().forEach(member -> subscriptions.put(
+                member,
+                subscriptionWithOwnedPartitions(initialAssignment.get(member), prevSubscriptions.get(member))
+            ));
+
+            // Add new member to trigger a reassignment.
+            this.subscriptions.put("newMember", subscription(
+                new ArrayList<>(partitionsPerTopic.keySet()),
+                memberCount + 1)
+            );
         }
     }
 
@@ -142,9 +162,34 @@ public class ClientSideAssignorBenchmark {
     protected ConsumerPartitionAssignor.Subscription subscription(List<String> topics, int consumerIndex) {
         if (isRackAware) {
             String rackId = "rack" + consumerIndex % 3;
-            return new ConsumerPartitionAssignor.Subscription(topics, null, Collections.emptyList(), DEFAULT_GENERATION, Optional.of(rackId));
+            return new ConsumerPartitionAssignor.Subscription(
+                topics,
+                null,
+                Collections.emptyList(),
+                DEFAULT_GENERATION,
+                Optional.of(rackId)
+            );
         }
-        return new ConsumerPartitionAssignor.Subscription(topics, null, Collections.emptyList(), DEFAULT_GENERATION, Optional.empty());
+        return new ConsumerPartitionAssignor.Subscription(
+            topics,
+            null,
+            Collections.emptyList(),
+            DEFAULT_GENERATION,
+            Optional.empty()
+        );
+    }
+
+    protected ConsumerPartitionAssignor.Subscription subscriptionWithOwnedPartitions(
+        List<TopicPartition> ownedPartitions,
+        ConsumerPartitionAssignor.Subscription prevSubscription
+    ) {
+        return new ConsumerPartitionAssignor.Subscription(
+            prevSubscription.topics(),
+            null,
+            ownedPartitions,
+            DEFAULT_GENERATION,
+            prevSubscription.rackId()
+        );
     }
 
     @Benchmark

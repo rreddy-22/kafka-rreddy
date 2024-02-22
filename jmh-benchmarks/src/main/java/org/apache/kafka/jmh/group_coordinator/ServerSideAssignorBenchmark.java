@@ -3,6 +3,7 @@ package org.apache.kafka.jmh.group_coordinator;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.coordinator.group.assignor.AssignmentMemberSpec;
 import org.apache.kafka.coordinator.group.assignor.AssignmentSpec;
+import org.apache.kafka.coordinator.group.assignor.GroupAssignment;
 import org.apache.kafka.coordinator.group.assignor.PartitionAssignor;
 import org.apache.kafka.coordinator.group.assignor.RangeAssignor;
 import org.apache.kafka.coordinator.group.assignor.SubscribedTopicDescriber;
@@ -52,7 +53,7 @@ public class ServerSideAssignorBenchmark {
     @Param({"10"})
     private int memberCount;
 
-    @Param({"true"})
+    @Param({"false"})
     private boolean isRackAware;
 
     @Param({"true"})
@@ -60,6 +61,9 @@ public class ServerSideAssignorBenchmark {
 
     @Param({"false"})
     private boolean isRangeAssignor;
+
+    @Param({"true"})
+    private boolean isReassignment;
 
     private PartitionAssignor partitionAssignor;
 
@@ -96,6 +100,32 @@ public class ServerSideAssignorBenchmark {
             this.partitionAssignor = new RangeAssignor();
         } else {
             this.partitionAssignor = new UniformAssignor();
+        }
+
+        if (isReassignment) {
+            GroupAssignment initialAssignment = partitionAssignor.assign(assignmentSpec, subscribedTopicDescriber);
+            // Update the AssignmentSpec with the results from the initial assignment.
+            Map<String, AssignmentMemberSpec> updatedMembers = new TreeMap<>();
+
+            initialAssignment.members().forEach((memberId, memberAssignment) -> {
+                AssignmentMemberSpec memberSpec = assignmentSpec.members().get(memberId);
+                updatedMembers.put(memberId, new AssignmentMemberSpec(
+                    memberSpec.instanceId(),
+                    memberSpec.rackId(),
+                    memberSpec.subscribedTopicIds(),
+                    memberAssignment.targetPartitions()
+                ));
+            });
+
+            // Add new member to trigger a reassignment.
+            updatedMembers.put("newMember", new AssignmentMemberSpec(
+                Optional.empty(),
+                Optional.empty(),
+                topicMetadata.keySet(),
+                Collections.emptyMap())
+            );
+
+            this.assignmentSpec = new AssignmentSpec(updatedMembers);
         }
     }
 
