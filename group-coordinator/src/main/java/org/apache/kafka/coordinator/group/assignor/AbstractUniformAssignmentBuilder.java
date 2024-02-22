@@ -111,11 +111,13 @@ public abstract class AbstractUniformAssignmentBuilder {
         SubscribedTopicDescriber subscribedTopicDescriber,
         Consumer<TopicIdPartition> func
     ) {
-        topicIds.stream()
-            .flatMap(topic -> IntStream
-                .range(0, subscribedTopicDescriber.numPartitions(topic))
-                .mapToObj(i -> new TopicIdPartition(topic, i))
-            ).forEach(func);
+        for (Uuid topicId : topicIds) {
+            int numPartitions = subscribedTopicDescriber.numPartitions(topicId);
+            for (int i = 0; i < numPartitions; i++) {
+                TopicIdPartition topicIdPartition = new TopicIdPartition(topicId, i);
+                func.accept(topicIdPartition);
+            }
+        }
     }
 
     /**
@@ -227,13 +229,21 @@ public abstract class AbstractUniformAssignmentBuilder {
          * @return A sorted list of partitions with potential members in the same rack.
          */
         protected List<TopicIdPartition> sortPartitionsByRackMembers(Collection<TopicIdPartition> topicIdPartitions) {
-            return topicIdPartitions.stream()
-                .filter(tp -> membersWithSameRackAsPartition.containsKey(tp) && !membersWithSameRackAsPartition.get(tp).isEmpty())
-                .sorted(Comparator.comparing(
-                        (TopicIdPartition tp) -> membersWithSameRackAsPartition.getOrDefault(tp, Collections.emptyList()).size())
-                    .thenComparing(TopicIdPartition::topicId)
-                    .thenComparing(TopicIdPartition::partitionId))
-                .collect(Collectors.toList());
+
+            List<TopicIdPartition> filteredPartitions = new ArrayList<>();
+            for (TopicIdPartition tp : topicIdPartitions) {
+                if (membersWithSameRackAsPartition.containsKey(tp) && !membersWithSameRackAsPartition.get(tp).isEmpty()) {
+                    filteredPartitions.add(tp);
+                }
+            }
+
+            Collections.sort(filteredPartitions, (tp1, tp2) -> {
+                int size1 = membersWithSameRackAsPartition.getOrDefault(tp1, Collections.emptyList()).size();
+                int size2 = membersWithSameRackAsPartition.getOrDefault(tp2, Collections.emptyList()).size();
+                return Integer.compare(size1, size2);
+            });
+
+            return filteredPartitions;
         }
 
         /**
@@ -258,7 +268,6 @@ public abstract class AbstractUniformAssignmentBuilder {
                 // Use a simple operation to test
                 return memberAssignment.targetPartitions().size();
             }));
-
             return membersList;
         }
 

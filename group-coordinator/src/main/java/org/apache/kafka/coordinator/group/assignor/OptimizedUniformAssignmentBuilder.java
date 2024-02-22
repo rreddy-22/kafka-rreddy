@@ -278,17 +278,16 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
     /**
      * Allocates the unassigned partitions to unfilled members present in the same rack.
      * Partitions with the least number of potential members in the same rack are allotted first.
-     * Members in the same rack with the least number of partitions in the target assignment
-     * are assigned partitions first.
+     * Only members in the same rack as the partition in question are used.
      */
     private void rackAwarePartitionAssignment() {
         // Sort partitions in ascending order by number of potential members with matching racks.
         // Partitions with no potential members in the same rack aren't included in this list.
         List<TopicIdPartition> sortedPartitions = rackInfo.sortPartitionsByRackMembers(unassignedPartitions);
         sortedPartitions.forEach(partition -> {
-            List<String> sortedMembersWithMatchingRack = rackInfo.getSortedMembersWithMatchingRack(partition, targetAssignment);
+            List<String> membersWithMatchingRack = rackInfo.membersWithSameRackAsPartition.get(partition);
 
-            for (String memberId : sortedMembersWithMatchingRack) {
+            for (String memberId : membersWithMatchingRack) {
                 if (potentiallyUnfilledMembers.containsKey(memberId) && maybeAssignPartitionToMember(memberId, partition)) {
                     unassignedPartitions.remove(partition);
                     break;
