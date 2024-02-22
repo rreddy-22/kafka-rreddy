@@ -25,13 +25,12 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 /**
  * The assignment builder is used to construct the target assignment based on the members' subscriptions.
@@ -230,18 +229,11 @@ public abstract class AbstractUniformAssignmentBuilder {
          */
         protected List<TopicIdPartition> sortPartitionsByRackMembers(Collection<TopicIdPartition> topicIdPartitions) {
 
-            List<TopicIdPartition> filteredPartitions = new ArrayList<>();
-            for (TopicIdPartition tp : topicIdPartitions) {
-                if (membersWithSameRackAsPartition.containsKey(tp) && !membersWithSameRackAsPartition.get(tp).isEmpty()) {
-                    filteredPartitions.add(tp);
-                }
-            }
+            List<TopicIdPartition> filteredPartitions = new LinkedList<>(topicIdPartitions);
 
-            Collections.sort(filteredPartitions, (tp1, tp2) -> {
-                int size1 = membersWithSameRackAsPartition.getOrDefault(tp1, Collections.emptyList()).size();
-                int size2 = membersWithSameRackAsPartition.getOrDefault(tp2, Collections.emptyList()).size();
-                return Integer.compare(size1, size2);
-            });
+            filteredPartitions.sort(Comparator.comparing(tp ->
+                membersWithSameRackAsPartition.getOrDefault(tp, Collections.emptyList()).size())
+            );
 
             return filteredPartitions;
         }

@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -288,7 +289,7 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
             List<String> membersWithMatchingRack = rackInfo.membersWithSameRackAsPartition.get(partition);
 
             for (String memberId : membersWithMatchingRack) {
-                if (potentiallyUnfilledMembers.containsKey(memberId) && maybeAssignPartitionToMember(memberId, partition)) {
+                if (maybeAssignPartitionToMember(memberId, partition)) {
                     unassignedPartitions.remove(partition);
                     break;
                 }
@@ -308,31 +309,22 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
     private void unassignedPartitionsRoundRobinAssignment() {
         Queue<String> roundRobinMembers = new LinkedList<>(potentiallyUnfilledMembers.keySet());
 
-        // Partitions are sorted to ensure an even topic wise distribution across members.
-        // This not only balances the load but also makes partition-to-member mapping more predictable.
-        /*List<TopicIdPartition> sortedPartitionsList = unassignedPartitions.stream()
-            .sorted(Comparator.comparing(TopicIdPartition::topicId).thenComparing(TopicIdPartition::partitionId))
-            .collect(Collectors.toList());*/
-        List<TopicIdPartition> unassignedPartitions2 = new ArrayList<>(unassignedPartitions);
+        List<TopicIdPartition> unassignedPartitions = new ArrayList<>(this.unassignedPartitions);
 
-        for (TopicIdPartition topicIdPartition : unassignedPartitions2) {
+        for (TopicIdPartition topicIdPartition : unassignedPartitions) {
             boolean assigned = false;
 
             if (rackInfo.useRackStrategy && currentPartitionOwners.containsKey(topicIdPartition)) {
                 String currentOwner = currentPartitionOwners.get(topicIdPartition);
-                if (potentiallyUnfilledMembers.containsKey(currentOwner)) {
-                    assigned = maybeAssignPartitionToMember(currentOwner, topicIdPartition);
-                    if (!potentiallyUnfilledMembers.containsKey(currentOwner)) {
-                        roundRobinMembers.remove(currentOwner);
-                    }
+                assigned = maybeAssignPartitionToMember(currentOwner, topicIdPartition);
+                if (!potentiallyUnfilledMembers.containsKey(currentOwner)) {
+                    roundRobinMembers.remove(currentOwner);
                 }
             }
 
             for (int i = 0; i < roundRobinMembers.size() && !assigned; i++) {
                 String memberId = roundRobinMembers.poll();
-                if (potentiallyUnfilledMembers.containsKey(memberId)) {
-                    assigned = maybeAssignPartitionToMember(memberId, topicIdPartition);
-                }
+                assigned = maybeAssignPartitionToMember(memberId, topicIdPartition);
                 // Only re-add the member to the end of the queue if it's still available for assignment.
                 if (potentiallyUnfilledMembers.containsKey(memberId)) {
                     roundRobinMembers.add(memberId);
@@ -340,7 +332,7 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
             }
 
             if (assigned) {
-                unassignedPartitions.remove(topicIdPartition);
+                this.unassignedPartitions.remove(topicIdPartition);
             }
         }
     }
@@ -350,6 +342,7 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
      * Only assign extra partitions once the member has met its minimum quota = total partitions / total members.
      *
      * <ol>
+     *     <li> If the member doesn't have the capacity to take more partitions, return false. </li>
      *     <li> If the minimum quota hasn't been met aka remaining > 0 directly assign the partition.
      *          After assigning the partition, if the min quota has been met aka remaining = 0, remove the member
      *          if there's no members left to receive an extra partition. Otherwise, keep it in the
@@ -365,7 +358,7 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
      * @return true if the assignment was successful, false otherwise.
      */
     private boolean maybeAssignPartitionToMember(String memberId, TopicIdPartition topicIdPartition) {
-        int remaining = potentiallyUnfilledMembers.get(memberId);
+        int remaining = potentiallyUnfilledMembers.getOrDefault(memberId, -1);
         boolean shouldAssign = false;
 
         // If the member hasn't met the minimum quota, set the flag for assignment.
@@ -401,6 +394,7 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
 
         // No assignment possible because the member met the minimum quota but
         // number of members to receive an extra partition is zero.
+        // OR member wasn't found in the potentiallyUnfilledMembersList and remaining = -1.
         return false;
     }
 }
