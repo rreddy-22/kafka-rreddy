@@ -164,10 +164,6 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
         if (rackInfo.useRackStrategy) rackAwarePartitionAssignment();
         unassignedPartitionsRoundRobinAssignment();
 
-        if (!unassignedPartitions.isEmpty()) {
-            throw new PartitionAssignorException("Partitions were left unassigned");
-        }
-
         return new GroupAssignment(targetAssignment);
     }
 
@@ -307,32 +303,29 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
      * if the rack-aware strategy is not enabled, the partitions are allocated to the unfilled members.
      */
     private void unassignedPartitionsRoundRobinAssignment() {
-        Queue<String> roundRobinMembers = new LinkedList<>(potentiallyUnfilledMembers.keySet());
+        // Convert the set to a list for efficient index-based access.
+        List<TopicIdPartition> partitionList = new ArrayList<>(this.unassignedPartitions);
 
-        List<TopicIdPartition> unassignedPartitions = new ArrayList<>(this.unassignedPartitions);
+        // Circular index to maintain the current position in the round-robin.
+        int index = 0;
+        List<String> members = new ArrayList<>(potentiallyUnfilledMembers.keySet());
 
-        for (TopicIdPartition topicIdPartition : unassignedPartitions) {
+        for (TopicIdPartition partition : partitionList) {
             boolean assigned = false;
+            int attempts = 0;
 
-            if (rackInfo.useRackStrategy && currentPartitionOwners.containsKey(topicIdPartition)) {
-                String currentOwner = currentPartitionOwners.get(topicIdPartition);
-                assigned = maybeAssignPartitionToMember(currentOwner, topicIdPartition);
-                if (!potentiallyUnfilledMembers.containsKey(currentOwner)) {
-                    roundRobinMembers.remove(currentOwner);
+            while (!assigned && attempts < members.size()) {
+                String currentMember = members.get(index);
+                index = (index + 1) % members.size();
+                attempts++;
+
+                if (potentiallyUnfilledMembers.get(currentMember) > 0) {
+                    assigned = maybeAssignPartitionToMember(currentMember, partition);
+                    if (assigned) {
+                        potentiallyUnfilledMembers.put(currentMember, potentiallyUnfilledMembers.get(currentMember) - 1);
+                        this.unassignedPartitions.remove(partition);
+                    }
                 }
-            }
-
-            for (int i = 0; i < roundRobinMembers.size() && !assigned; i++) {
-                String memberId = roundRobinMembers.poll();
-                assigned = maybeAssignPartitionToMember(memberId, topicIdPartition);
-                // Only re-add the member to the end of the queue if it's still available for assignment.
-                if (potentiallyUnfilledMembers.containsKey(memberId)) {
-                    roundRobinMembers.add(memberId);
-                }
-            }
-
-            if (assigned) {
-                this.unassignedPartitions.remove(topicIdPartition);
             }
         }
     }
@@ -364,14 +357,14 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
         // If the member hasn't met the minimum quota, set the flag for assignment.
         // If member has met minimum quota and there's an extra partition available, set the flag for assignment.
         if (remaining > 0) {
-            potentiallyUnfilledMembers.put(memberId, --remaining);
             shouldAssign = true;
-
             // If the member meets the minimum quota due to this assignment,
             // check if any extra partitions are available.
             // Removing the member from the list reduces an iteration for when remaining = 0 but there's no extras left.
             if (remaining == 0 && remainingMembersToGetAnExtraPartition == 0) {
                 potentiallyUnfilledMembers.remove(memberId);
+            } else {
+                potentiallyUnfilledMembers.put(memberId, --remaining);
             }
         } else if (remaining == 0 && remainingMembersToGetAnExtraPartition > 0) {
             remainingMembersToGetAnExtraPartition--;

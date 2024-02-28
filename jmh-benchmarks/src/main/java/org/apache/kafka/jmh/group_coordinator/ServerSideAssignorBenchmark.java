@@ -62,7 +62,7 @@ public class ServerSideAssignorBenchmark {
     @Param({"false"})
     private boolean isRangeAssignor;
 
-    @Param({"true"})
+    @Param({"false"})
     private boolean isReassignment;
 
     private PartitionAssignor partitionAssignor;
@@ -118,9 +118,10 @@ public class ServerSideAssignorBenchmark {
             });
 
             // Add new member to trigger a reassignment.
+            String rackId = "rack" + (memberCount + 1) % numberOfRacks;
             updatedMembers.put("newMember", new AssignmentMemberSpec(
                 Optional.empty(),
-                Optional.empty(),
+                Optional.of(rackId),
                 topicMetadata.keySet(),
                 Collections.emptyMap())
             );

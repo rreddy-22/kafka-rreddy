@@ -57,7 +57,7 @@ public class ClientSideAssignorBenchmark {
     @Param({"false"})
     private boolean isRangeAssignor;
 
-    @Param({"true"})
+    @Param({"false"})
     private boolean isReassignment;
 
     private final Map<String, ConsumerPartitionAssignor.Subscription> subscriptions = new HashMap<>();
@@ -99,8 +99,8 @@ public class ClientSideAssignorBenchmark {
             // Add new member to trigger a reassignment.
             this.subscriptions.put("newMember", subscription(
                 new ArrayList<>(partitionsPerTopic.keySet()),
-                memberCount + 1)
-            );
+                memberCount
+            ));
         }
     }
 
