@@ -25,11 +25,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Queue;
 import java.util.Set;
 import java.util.stream.IntStream;
 
@@ -100,7 +99,7 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
     /**
      * The target assignment.
      */
-    private final Map<String, MemberAssignment> targetAssignment;
+    private Map<String, MemberAssignment> targetAssignment;
 
     /**
      * Tracks the existing owner of each partition.
@@ -108,16 +107,33 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
      */
     private final Map<TopicIdPartition, String> currentPartitionOwners;
 
+    // the consumers which may still be assigned one or more partitions to reach expected capacity
+    private final List<String> unfilledMembersWithUnderMinQuotaPartitions;
+    private final LinkedList<String> unfilledMembersWithExactlyMinQuotaPartitions;
+
+    // the expected number of members receiving more than minQuota partitions (zero when minQuota == maxQuota)
+    private int expectedNumMembersWithOverMinQuotaPartitions;
+    // the current number of members receiving more than minQuota partitions (zero when minQuota == maxQuota)
+    private int currentNumMembersWithOverMinQuotaPartitions;
+    private final Map<String, Integer> currentAssignmentCounts;
+    private final Map<String, List<TopicIdPartition>> newClientTypeAssignment;
+
+
     OptimizedUniformAssignmentBuilder(AssignmentSpec assignmentSpec, SubscribedTopicDescriber subscribedTopicDescriber) {
         this.assignmentSpec = assignmentSpec;
         this.subscribedTopicDescriber = subscribedTopicDescriber;
         this.subscribedTopicIds = new HashSet<>(assignmentSpec.members().values().iterator().next().subscribedTopicIds());
         this.rackInfo = new RackInfo(assignmentSpec, subscribedTopicDescriber, subscribedTopicIds);
         this.potentiallyUnfilledMembers = new HashMap<>();
-        this.targetAssignment = new HashMap<>();
+        int numOfMembers = assignmentSpec.members().size();
+        this.targetAssignment = new HashMap<>(numOfMembers);
         // Without rack-aware strategy, tracking current owners of unassigned partitions is unnecessary
         // as all sticky partitions are retained until a member meets its quota.
         this.currentPartitionOwners = rackInfo.useRackStrategy ? new HashMap<>() : Collections.emptyMap();
+        this.unfilledMembersWithUnderMinQuotaPartitions = new ArrayList<>();
+        this.unfilledMembersWithExactlyMinQuotaPartitions = new LinkedList<>();
+        this.currentAssignmentCounts = new HashMap<>(numOfMembers);
+        this.newClientTypeAssignment = new HashMap<>(numOfMembers);
     }
 
     /**
@@ -151,18 +167,21 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
         // The minimum required quota that each member needs to meet for a balanced assignment.
         // This is the same for all members.
         final int numberOfMembers = assignmentSpec.members().size();
-        final int minQuota = totalPartitionsCount / numberOfMembers;
+        final int minQuota = (int) Math.floor(((double) totalPartitionsCount) / numberOfMembers);
+        final int maxQuota = (int) Math.ceil(((double) totalPartitionsCount) / numberOfMembers);
+        expectedNumMembersWithOverMinQuotaPartitions = totalPartitionsCount % numberOfMembers;
+        currentNumMembersWithOverMinQuotaPartitions = 0;
         remainingMembersToGetAnExtraPartition = totalPartitionsCount % numberOfMembers;
 
-        assignmentSpec.members().keySet().forEach(memberId ->
-            targetAssignment.put(memberId, new MemberAssignment(new HashMap<>())
-        ));
+        assignmentSpec.members().keySet().forEach(memberId -> {
+            targetAssignment.put(memberId, new MemberAssignment(new HashMap<>()));
+        });
 
         unassignedPartitions = topicIdPartitions(subscribedTopicIds, subscribedTopicDescriber);
         potentiallyUnfilledMembers = assignStickyPartitions(minQuota);
 
         if (rackInfo.useRackStrategy) rackAwarePartitionAssignment();
-        unassignedPartitionsRoundRobinAssignment();
+        unassignedPartitionsRoundRobinAssignment(minQuota, maxQuota);
 
         return new GroupAssignment(targetAssignment);
     }
@@ -231,6 +250,7 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
 
             if (remaining >= 0) {
                 potentiallyUnfilledMembers.put(memberId, remaining);
+                unfilledMembersWithUnderMinQuotaPartitions.add(memberId);
             }
         });
 
@@ -302,32 +322,51 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
      * If a partition couldn't be assigned to its current owner due to the quotas OR
      * if the rack-aware strategy is not enabled, the partitions are allocated to the unfilled members.
      */
-    private void unassignedPartitionsRoundRobinAssignment() {
-        // Convert the set to a list for efficient index-based access.
-        List<TopicIdPartition> partitionList = new ArrayList<>(this.unassignedPartitions);
+    private void unassignedPartitionsRoundRobinAssignment(int minQuota, int maxQuota) {
+        Iterator<String> unfilledConsumerIter = unfilledMembersWithUnderMinQuotaPartitions.iterator();
+        List<TopicIdPartition> unassignedPartitionsList = new ArrayList<>(unassignedPartitions);
 
-        // Circular index to maintain the current position in the round-robin.
-        int index = 0;
-        List<String> members = new ArrayList<>(potentiallyUnfilledMembers.keySet());
+        for (TopicIdPartition unassignedPartition : unassignedPartitionsList) {
+            String consumer;
+            if (unfilledConsumerIter.hasNext()) {
+                consumer = unfilledConsumerIter.next();
+            } else {
+                if (unfilledMembersWithUnderMinQuotaPartitions.isEmpty() && unfilledMembersWithExactlyMinQuotaPartitions.isEmpty()) {
+                    LOG.error("No more unfilled consumers to be assigned. The remaining unassigned partitions are: {}",
+                        unassignedPartitions);
+                    throw new IllegalStateException("No more unfilled consumers to be assigned.");
+                } else if (unfilledMembersWithUnderMinQuotaPartitions.isEmpty()) {
+                    consumer = unfilledMembersWithExactlyMinQuotaPartitions.poll();
+                } else {
+                    unfilledConsumerIter = unfilledMembersWithUnderMinQuotaPartitions.iterator();
+                    consumer = unfilledConsumerIter.next();
+                }
+            }
 
-        for (TopicIdPartition partition : partitionList) {
-            boolean assigned = false;
-            int attempts = 0;
+            int currentAssignedCount = assignNewPartition(unassignedPartition, consumer);
 
-            while (!assigned && attempts < members.size()) {
-                String currentMember = members.get(index);
-                index = (index + 1) % members.size();
-                attempts++;
-
-                if (potentiallyUnfilledMembers.get(currentMember) > 0) {
-                    assigned = maybeAssignPartitionToMember(currentMember, partition);
-                    if (assigned) {
-                        potentiallyUnfilledMembers.put(currentMember, potentiallyUnfilledMembers.get(currentMember) - 1);
-                        this.unassignedPartitions.remove(partition);
+            if (currentAssignedCount == minQuota) {
+                unfilledConsumerIter.remove();
+                unfilledMembersWithExactlyMinQuotaPartitions.add(consumer);
+            } else if (currentAssignedCount == maxQuota) {
+                currentNumMembersWithOverMinQuotaPartitions++;
+                if (currentNumMembersWithOverMinQuotaPartitions == expectedNumMembersWithOverMinQuotaPartitions) {
+                    if (!unassignedPartitions.isEmpty()) {
+                        LOG.error("Filled the last member up to maxQuota but still had partitions remaining to assign, " +
+                            "will continue but this indicates a bug in the assignment.");
                     }
                 }
             }
         }
+    }
+
+    private int assignNewPartition(TopicIdPartition topicIdPartition, String memberId) {
+        targetAssignment.get(memberId)
+            .targetPartitions()
+            .computeIfAbsent(topicIdPartition.topicId(), __ -> new HashSet<>())
+            .add(topicIdPartition.partitionId());
+        unassignedPartitions.remove(topicIdPartition);
+        return currentAssignmentCounts.merge(memberId, 1, Integer::sum);
     }
 
     /**

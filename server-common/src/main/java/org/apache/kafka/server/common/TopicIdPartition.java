@@ -24,6 +24,7 @@ import java.util.Objects;
  * Represents a partition using its unique topic Id and partition number.
  */
 public final class TopicIdPartition {
+    private int hash = 0;
     private final Uuid topicId;
     private final int partitionId;
 
@@ -48,14 +49,25 @@ public final class TopicIdPartition {
 
     @Override
     public boolean equals(Object o) {
-        if (!(o instanceof TopicIdPartition)) return false;
+        if (this == o)
+            return true;
+        if (o == null)
+            return false;
+        if (getClass() != o.getClass())
+            return false;
         TopicIdPartition other = (TopicIdPartition) o;
-        return other.topicId.equals(topicId) && other.partitionId == partitionId;
+        return partitionId == other.partitionId && Objects.equals(topicId, other.topicId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(topicId, partitionId);
+        if (hash != 0)
+            return hash;
+        final int prime = 31;
+        int result = prime + partitionId;
+        result = prime * result + Objects.hashCode(topicId);
+        this.hash = result;
+        return result;
     }
 
     @Override
