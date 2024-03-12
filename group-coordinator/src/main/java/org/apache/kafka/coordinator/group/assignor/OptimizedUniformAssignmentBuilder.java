@@ -116,7 +116,7 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
     // the current number of members receiving more than minQuota partitions (zero when minQuota == maxQuota)
     private int currentNumMembersWithOverMinQuotaPartitions;
     private final Map<String, Integer> currentAssignmentCounts;
-    private final Map<String, List<TopicIdPartition>> newClientTypeAssignment;
+    public final Map<String, List<TopicIdPartition>> newClientTypeAssignment;
 
 
     OptimizedUniformAssignmentBuilder(AssignmentSpec assignmentSpec, SubscribedTopicDescriber subscribedTopicDescriber) {
@@ -175,15 +175,16 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
 
         assignmentSpec.members().keySet().forEach(memberId -> {
             targetAssignment.put(memberId, new MemberAssignment(new HashMap<>()));
+            newClientTypeAssignment.put(memberId, new ArrayList<>(maxQuota));
         });
 
-        unassignedPartitions = topicIdPartitions(subscribedTopicIds, subscribedTopicDescriber);
-        potentiallyUnfilledMembers = assignStickyPartitions(minQuota);
+        unassignedPartitions = topicIdPartitions(subscribedTopicIds, totalPartitionsCount, subscribedTopicDescriber);
+        assignStickyPartitions(minQuota);
 
         if (rackInfo.useRackStrategy) rackAwarePartitionAssignment();
         unassignedPartitionsRoundRobinAssignment(minQuota, maxQuota);
 
-        return new GroupAssignment(targetAssignment);
+        return new GroupAssignment(targetAssignment, newClientTypeAssignment);
     }
 
     /**
@@ -208,9 +209,9 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
      * @return  Members mapped to the remaining number of partitions needed to meet the minimum quota,
      *          including members that are eligible to receive an extra partition.
      */
-    private Map<String, Integer> assignStickyPartitions(int minQuota) {
+    private void assignStickyPartitions(int minQuota) {
         Map<String, Integer> potentiallyUnfilledMembers = new HashMap<>();
-
+        //System.out.println("inside sticky partitions assignment");
         assignmentSpec.members().forEach((memberId, assignmentMemberSpec) -> {
             List<TopicIdPartition> validCurrentMemberAssignment = validCurrentMemberAssignment(
                 memberId,
@@ -225,36 +226,36 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
                 int retainedPartitionsCount = min(currentAssignmentSize, minQuota);
                 IntStream.range(0, retainedPartitionsCount).forEach(i -> {
                     TopicIdPartition topicIdPartition = validCurrentMemberAssignment.get(i);
-                    addPartitionToAssignment(
+                    /*addPartitionToAssignment(
                         targetAssignment,
                         memberId,
                         topicIdPartition.topicId(),
                         topicIdPartition.partitionId()
-                    );
+                    );*/
+                    assignNewPartitionNew(topicIdPartition, memberId);
                     unassignedPartitions.remove(topicIdPartition);
                 });
 
                 // The extra partition is located at the last index from the previous step.
                 if (remaining < 0 && remainingMembersToGetAnExtraPartition > 0) {
                     TopicIdPartition topicIdPartition = validCurrentMemberAssignment.get(retainedPartitionsCount);
-                    addPartitionToAssignment(
+                    /*addPartitionToAssignment(
                         targetAssignment,
                         memberId,
                         topicIdPartition.topicId(),
                         topicIdPartition.partitionId()
-                    );
+                    );*/
+                    assignNewPartitionNew(topicIdPartition, memberId);
                     unassignedPartitions.remove(topicIdPartition);
                     remainingMembersToGetAnExtraPartition--;
                 }
             }
 
             if (remaining >= 0) {
-                potentiallyUnfilledMembers.put(memberId, remaining);
+                //potentiallyUnfilledMembers.put(memberId, remaining);
                 unfilledMembersWithUnderMinQuotaPartitions.add(memberId);
             }
         });
-
-        return potentiallyUnfilledMembers;
     }
 
     /**
@@ -343,7 +344,7 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
                 }
             }
 
-            int currentAssignedCount = assignNewPartition(unassignedPartition, consumer);
+            int currentAssignedCount = assignNewPartitionNew(unassignedPartition, consumer);
 
             if (currentAssignedCount == minQuota) {
                 unfilledConsumerIter.remove();
@@ -367,6 +368,13 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
             .add(topicIdPartition.partitionId());
         unassignedPartitions.remove(topicIdPartition);
         return currentAssignmentCounts.merge(memberId, 1, Integer::sum);
+    }
+
+    public int assignNewPartitionNew(TopicIdPartition unassignedPartition, String consumer) {
+        List<TopicIdPartition> consumerAssignment = newClientTypeAssignment.get(consumer);
+        consumerAssignment.add(unassignedPartition);
+        unassignedPartitions.remove(unassignedPartition);
+        return consumerAssignment.size();
     }
 
     /**

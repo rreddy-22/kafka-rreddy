@@ -86,6 +86,29 @@ public abstract class AbstractUniformAssignmentBuilder {
      */
     protected static Set<TopicIdPartition> topicIdPartitions(
         Collection<Uuid> topicIds,
+        int totalPartitions,
+        SubscribedTopicDescriber subscribedTopicDescriber
+    ) {
+        Set<TopicIdPartition> result = new HashSet<>(totalPartitions);
+        for (Uuid topicId : topicIds) {
+            int numPartitions = subscribedTopicDescriber.numPartitions(topicId);
+            for (int i = 0; i < numPartitions; i++) {
+                result.add(new TopicIdPartition(topicId, i));
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Constructs a set of {@code TopicIdPartition} including all the given topic Ids based on their partition counts.
+     *
+     * @param topicIds                      Collection of topic Ids.
+     * @param subscribedTopicDescriber      Describer to fetch partition counts for topics.
+     *
+     * @return Set of {@code TopicIdPartition} including all the provided topic Ids.
+     */
+    protected static Set<TopicIdPartition> topicIdPartitions(
+        Collection<Uuid> topicIds,
         SubscribedTopicDescriber subscribedTopicDescriber
     ) {
         Set<TopicIdPartition> result = new HashSet<>();
