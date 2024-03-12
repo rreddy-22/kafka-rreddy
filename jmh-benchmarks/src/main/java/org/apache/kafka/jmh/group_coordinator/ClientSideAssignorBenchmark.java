@@ -3,6 +3,7 @@ package org.apache.kafka.jmh.group_coordinator;
 import org.apache.kafka.clients.consumer.ConsumerPartitionAssignor;
 import org.apache.kafka.clients.consumer.CooperativeStickyAssignor;
 import org.apache.kafka.clients.consumer.RangeAssignor;
+import org.apache.kafka.clients.consumer.StickyAssignor;
 import org.apache.kafka.clients.consumer.internals.AbstractPartitionAssignor;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
@@ -39,10 +40,10 @@ import static org.apache.kafka.clients.consumer.internals.AbstractStickyAssignor
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
 public class ClientSideAssignorBenchmark {
 
-    @Param({"100"})
+    @Param({"1000"})
     private int partitionsPerTopicCount;
 
-    @Param({"10"})
+    @Param({"100"})
     private int topicCount;
 
     @Param({"10"})
@@ -57,10 +58,10 @@ public class ClientSideAssignorBenchmark {
     @Param({"false"})
     private boolean isRangeAssignor;
 
-    @Param({"false"})
+    @Param({"true"})
     private boolean isReassignment;
 
-    private final Map<String, ConsumerPartitionAssignor.Subscription> subscriptions = new HashMap<>();
+    private Map<String, ConsumerPartitionAssignor.Subscription> subscriptions = new HashMap<>();
 
     private final int numBrokerRacks = 3;
 
@@ -89,18 +90,20 @@ public class ClientSideAssignorBenchmark {
 
         if (isReassignment) {
             Map<String, List<TopicPartition>> initialAssignment = assignor.assignPartitions(partitionsPerTopic, subscriptions);
-            Map<String, ConsumerPartitionAssignor.Subscription> prevSubscriptions = this.subscriptions;
-            this.subscriptions.clear();
-            prevSubscriptions.keySet().forEach(member -> subscriptions.put(
-                member,
-                subscriptionWithOwnedPartitions(initialAssignment.get(member), prevSubscriptions.get(member))
-            ));
-
+            Map<String, ConsumerPartitionAssignor.Subscription> newSubscriptions = new HashMap<>();
+            subscriptions.forEach((member, subscription) -> {
+                newSubscriptions.put(
+                    member,
+                    subscriptionWithOwnedPartitions(initialAssignment.get(member), subscription)
+                );
+            });
             // Add new member to trigger a reassignment.
-            this.subscriptions.put("newMember", subscription(
+            newSubscriptions.put("newMember", subscription(
                 new ArrayList<>(partitionsPerTopic.keySet()),
                 memberCount
             ));
+
+            this.subscriptions = newSubscriptions;
         }
     }
 

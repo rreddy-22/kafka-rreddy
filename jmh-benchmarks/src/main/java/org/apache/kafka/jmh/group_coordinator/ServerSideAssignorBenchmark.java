@@ -4,6 +4,7 @@ import org.apache.kafka.common.Uuid;
 import org.apache.kafka.coordinator.group.assignor.AssignmentMemberSpec;
 import org.apache.kafka.coordinator.group.assignor.AssignmentSpec;
 import org.apache.kafka.coordinator.group.assignor.GroupAssignment;
+import org.apache.kafka.coordinator.group.assignor.MemberAssignment;
 import org.apache.kafka.coordinator.group.assignor.PartitionAssignor;
 import org.apache.kafka.coordinator.group.assignor.RangeAssignor;
 import org.apache.kafka.coordinator.group.assignor.SubscribedTopicDescriber;
@@ -50,7 +51,7 @@ public class ServerSideAssignorBenchmark {
     @Param({"10"})
     private int topicCount;
 
-    @Param({"10"})
+    @Param({"10","150","500","1000", "10000"})
     private int memberCount;
 
     @Param({"false"})
@@ -62,7 +63,7 @@ public class ServerSideAssignorBenchmark {
     @Param({"false"})
     private boolean isRangeAssignor;
 
-    @Param({"false"})
+    @Param({"true"})
     private boolean isReassignment;
 
     private PartitionAssignor partitionAssignor;
@@ -104,10 +105,16 @@ public class ServerSideAssignorBenchmark {
 
         if (isReassignment) {
             GroupAssignment initialAssignment = partitionAssignor.assign(assignmentSpec, subscribedTopicDescriber);
+            Map<String, MemberAssignment> members;
+            if (!isRangeAssignor && isSubscriptionUniform) {
+                members = initialAssignment.convertNewClientTypeAssignment(initialAssignment.getNewClientTypeAssignment());
+            } else {
+                members = initialAssignment.members();
+            }
             // Update the AssignmentSpec with the results from the initial assignment.
-            Map<String, AssignmentMemberSpec> updatedMembers = new TreeMap<>();
+            Map<String, AssignmentMemberSpec> updatedMembers = new HashMap<>();
 
-            initialAssignment.members().forEach((memberId, memberAssignment) -> {
+            members.forEach((memberId, memberAssignment) -> {
                 AssignmentMemberSpec memberSpec = assignmentSpec.members().get(memberId);
                 updatedMembers.put(memberId, new AssignmentMemberSpec(
                     memberSpec.instanceId(),
@@ -118,14 +125,22 @@ public class ServerSideAssignorBenchmark {
             });
 
             // Add new member to trigger a reassignment.
-            String rackId = "rack" + (memberCount + 1) % numberOfRacks;
-            updatedMembers.put("newMember", new AssignmentMemberSpec(
-                Optional.empty(),
-                Optional.of(rackId),
-                topicMetadata.keySet(),
-                Collections.emptyMap())
-            );
-
+            if (isRackAware) {
+                String rackId = "rack" + (memberCount + 1) % numberOfRacks;
+                updatedMembers.put("newMember", new AssignmentMemberSpec(
+                    Optional.empty(),
+                    Optional.of(rackId),
+                    topicMetadata.keySet(),
+                    Collections.emptyMap())
+                );
+            } else {
+                updatedMembers.put("newMember", new AssignmentMemberSpec(
+                    Optional.empty(),
+                    Optional.empty(),
+                    topicMetadata.keySet(),
+                    Collections.emptyMap())
+                );
+            }
             this.assignmentSpec = new AssignmentSpec(updatedMembers);
         }
     }
