@@ -89,7 +89,8 @@ public abstract class AbstractUniformAssignmentBuilder {
         int totalPartitions,
         SubscribedTopicDescriber subscribedTopicDescriber
     ) {
-        Set<TopicIdPartition> result = new HashSet<>(totalPartitions);
+        int initialCapacity = (int) (totalPartitions / 0.75) + 1;
+        Set<TopicIdPartition> result = new HashSet<>(initialCapacity);
         for (Uuid topicId : topicIds) {
             int numPartitions = subscribedTopicDescriber.numPartitions(topicId);
             for (int i = 0; i < numPartitions; i++) {
@@ -277,7 +278,6 @@ public abstract class AbstractUniformAssignmentBuilder {
             membersList.sort(Comparator.comparingInt(member -> {
                 MemberAssignment memberAssignment = assignment.get(member);
                 if (memberAssignment == null || memberAssignment.targetPartitions() == null) {
-                    System.out.println("found numm member assignment or target assignment");
                     return 0;
                 }
                 // Use a simple operation to test

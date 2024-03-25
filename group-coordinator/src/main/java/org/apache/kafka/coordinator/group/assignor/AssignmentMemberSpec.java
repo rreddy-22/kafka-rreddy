@@ -17,8 +17,11 @@
 package org.apache.kafka.coordinator.group.assignor;
 
 import org.apache.kafka.common.Uuid;
+import org.apache.kafka.server.common.TopicIdPartition;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -49,6 +52,11 @@ public class AssignmentMemberSpec {
     private final Map<Uuid, Set<Integer>> assignedPartitions;
 
     /**
+     * List of assigned topicIdPartitions.
+     */
+    private final List<TopicIdPartition> assignedPartitionsList;
+
+    /**
      * @return The instance ID as an Optional.
      */
     public Optional<String> instanceId() {
@@ -76,6 +84,32 @@ public class AssignmentMemberSpec {
         return assignedPartitions;
     }
 
+    /**
+     * @return Assigned partitions list.
+     */
+    public List<TopicIdPartition> assignedPartitionsList() {
+        return assignedPartitionsList;
+    }
+
+    public AssignmentMemberSpec(
+        Optional<String> instanceId,
+        Optional<String> rackId,
+        Collection<Uuid> subscribedTopicIds,
+        Map<Uuid, Set<Integer>> assignedPartitions,
+        List<TopicIdPartition> assignedPartitionsList
+    ) {
+        Objects.requireNonNull(instanceId);
+        Objects.requireNonNull(rackId);
+        Objects.requireNonNull(subscribedTopicIds);
+        Objects.requireNonNull(assignedPartitions);
+        Objects.requireNonNull(assignedPartitionsList);
+        this.instanceId = instanceId;
+        this.rackId = rackId;
+        this.subscribedTopicIds = subscribedTopicIds;
+        this.assignedPartitions = assignedPartitions;
+        this.assignedPartitionsList = assignedPartitionsList;
+    }
+
     public AssignmentMemberSpec(
         Optional<String> instanceId,
         Optional<String> rackId,
@@ -90,6 +124,7 @@ public class AssignmentMemberSpec {
         this.rackId = rackId;
         this.subscribedTopicIds = subscribedTopicIds;
         this.assignedPartitions = assignedPartitions;
+        this.assignedPartitionsList = Collections.emptyList();
     }
 
     @Override
@@ -100,6 +135,7 @@ public class AssignmentMemberSpec {
         if (!instanceId.equals(that.instanceId)) return false;
         if (!rackId.equals(that.rackId)) return false;
         if (!subscribedTopicIds.equals(that.subscribedTopicIds)) return false;
+        if (!assignedPartitionsList.equals(that.assignedPartitionsList)) return false;
         return assignedPartitions.equals(that.assignedPartitions);
     }
 
@@ -109,6 +145,7 @@ public class AssignmentMemberSpec {
         result = 31 * result + rackId.hashCode();
         result = 31 * result + subscribedTopicIds.hashCode();
         result = 31 * result + assignedPartitions.hashCode();
+        result = 31 * result + assignedPartitionsList.hashCode();
         return result;
     }
 
@@ -118,6 +155,7 @@ public class AssignmentMemberSpec {
             ", rackId=" + rackId +
             ", subscribedTopicIds=" + subscribedTopicIds +
             ", assignedPartitions=" + assignedPartitions +
+            ", assignedPartitionsList=" + assignedPartitionsList +
             ')';
     }
 }

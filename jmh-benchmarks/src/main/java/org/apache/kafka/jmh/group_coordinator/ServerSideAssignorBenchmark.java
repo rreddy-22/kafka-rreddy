@@ -120,7 +120,8 @@ public class ServerSideAssignorBenchmark {
                     memberSpec.instanceId(),
                     memberSpec.rackId(),
                     memberSpec.subscribedTopicIds(),
-                    memberAssignment.targetPartitions()
+                    memberAssignment.targetPartitions(),
+                    initialAssignment.getNewClientTypeAssignment().get(memberId)
                 ));
             });
 
@@ -131,15 +132,17 @@ public class ServerSideAssignorBenchmark {
                     Optional.empty(),
                     Optional.of(rackId),
                     topicMetadata.keySet(),
-                    Collections.emptyMap())
-                );
+                    Collections.emptyMap(),
+                    Collections.emptyList()
+                ));
             } else {
                 updatedMembers.put("newMember", new AssignmentMemberSpec(
                     Optional.empty(),
                     Optional.empty(),
                     topicMetadata.keySet(),
-                    Collections.emptyMap())
-                );
+                    Collections.emptyMap(),
+                    Collections.emptyList()
+                ));
             }
             this.assignmentSpec = new AssignmentSpec(updatedMembers);
         }

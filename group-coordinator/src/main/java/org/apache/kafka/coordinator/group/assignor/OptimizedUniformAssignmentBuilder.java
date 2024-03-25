@@ -179,7 +179,7 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
         });
 
         unassignedPartitions = topicIdPartitions(subscribedTopicIds, totalPartitionsCount, subscribedTopicDescriber);
-        assignStickyPartitions(minQuota);
+        assignOwnedPartitions(minQuota, maxQuota);
 
         if (rackInfo.useRackStrategy) rackAwarePartitionAssignment();
         unassignedPartitionsRoundRobinAssignment(minQuota, maxQuota);
@@ -211,7 +211,7 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
      */
     private void assignStickyPartitions(int minQuota) {
         Map<String, Integer> potentiallyUnfilledMembers = new HashMap<>();
-        //System.out.println("inside sticky partitions assignment");
+
         assignmentSpec.members().forEach((memberId, assignmentMemberSpec) -> {
             List<TopicIdPartition> validCurrentMemberAssignment = validCurrentMemberAssignment(
                 memberId,
@@ -256,6 +256,62 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
                 unfilledMembersWithUnderMinQuotaPartitions.add(memberId);
             }
         });
+    }
+
+    // Reassign previously owned partitions, up to the expected number of partitions per consumer
+    private void assignOwnedPartitions(int minQuota, int maxQuota) {
+
+        for (Map.Entry<String, AssignmentMemberSpec> consumerEntry : assignmentSpec.members().entrySet()) {
+            String consumer = consumerEntry.getKey();
+            List<TopicIdPartition> ownedPartitions = new ArrayList<>();
+            for (TopicIdPartition tp : consumerEntry.getValue().assignedPartitionsList()) {
+                if (rackInfo.useRackStrategy && rackInfo.racksMismatch(consumer, tp)) {
+                    currentPartitionOwners.put(tp, consumer);
+                } else {
+                    ownedPartitions.add(tp);
+                }
+            }
+
+            //System.out.println("owned partitions list for" + consumer + "is" + ownedPartitions);
+
+        /*assignmentSpec.members().forEach((memberId, assignmentMemberSpec) -> {
+            List<TopicIdPartition> ownedPartitions = validCurrentMemberAssignment(
+                memberId,
+                assignmentMemberSpec.assignedPartitions()
+            );*/
+            List<TopicIdPartition> consumerAssignment = newClientTypeAssignment.get(consumer);
+            if (ownedPartitions.size() < minQuota) {
+                // the expected assignment size is more than this consumer has now, so keep all the owned partitions
+                // and put this member into the unfilled member list
+                if (ownedPartitions.size() > 0) {
+                    consumerAssignment.addAll(ownedPartitions);
+                    unassignedPartitions.removeAll(ownedPartitions);
+                }
+                unfilledMembersWithUnderMinQuotaPartitions.add(consumer);
+            } else if (ownedPartitions.size() >= maxQuota && currentNumMembersWithOverMinQuotaPartitions < expectedNumMembersWithOverMinQuotaPartitions) {
+                // consumer owned the "maxQuota" of partitions or more, and we're still under the number of expected members
+                // with more than the minQuota partitions, so keep "maxQuota" of the owned partitions, and revoke the rest of the partitions
+                currentNumMembersWithOverMinQuotaPartitions++;
+                if (currentNumMembersWithOverMinQuotaPartitions == expectedNumMembersWithOverMinQuotaPartitions) {
+                    unfilledMembersWithExactlyMinQuotaPartitions.clear();
+                }
+                List<TopicIdPartition> maxQuotaPartitions = ownedPartitions.subList(0, maxQuota);
+                consumerAssignment.addAll(maxQuotaPartitions);
+                unassignedPartitions.removeAll(maxQuotaPartitions);
+            } else {
+                // consumer owned at least "minQuota" of partitions
+                // so keep "minQuota" of the owned partitions, and revoke the rest of the partitions
+                List<TopicIdPartition> minQuotaPartitions = ownedPartitions.subList(0, minQuota);
+                consumerAssignment.addAll(minQuotaPartitions);
+                unassignedPartitions.removeAll(minQuotaPartitions);
+                // this consumer is potential maxQuota candidate since we're still under the number of expected members
+                // with more than the minQuota partitions. Note, if the number of expected members with more than
+                // the minQuota partitions is 0, it means minQuota == maxQuota, and there are no potentially unfilled
+                if (currentNumMembersWithOverMinQuotaPartitions < expectedNumMembersWithOverMinQuotaPartitions) {
+                    unfilledMembersWithExactlyMinQuotaPartitions.add(consumer);
+                }
+            }
+        }
     }
 
     /**
