@@ -16,9 +16,11 @@
  */
 package org.apache.kafka.coordinator.group.assignor;
 
+
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.coordinator.group.consumer.SubscribedTopicMetadata;
 import org.apache.kafka.coordinator.group.consumer.TopicMetadata;
+import org.apache.kafka.server.common.TopicIdPartition;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -33,8 +35,10 @@ import java.util.Set;
 import java.util.TreeMap;
 
 import static org.apache.kafka.coordinator.group.AssignmentTestUtil.assertAssignment;
+import static org.apache.kafka.coordinator.group.AssignmentTestUtil.combineTopicIdPartitionLists;
 import static org.apache.kafka.coordinator.group.AssignmentTestUtil.mkAssignment;
 import static org.apache.kafka.coordinator.group.AssignmentTestUtil.mkTopicAssignment;
+import static org.apache.kafka.coordinator.group.AssignmentTestUtil.mkTopicIdPartitionList;
 import static org.apache.kafka.coordinator.group.RecordHelpersTest.mkMapOfPartitionRacks;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -210,6 +214,7 @@ public class OptimizedUniformAssignmentBuilderTest {
         checkValidityAndBalance(members, computedAssignment);
     }
 
+    // Can keep the final assignment mapping
     @Test
     public void testFirstAssignmentThreeMembersThreeTopicsWithMemberAndPartitionRacks() {
         Map<Uuid, TopicMetadata> topicMetadata = new HashMap<>();
@@ -254,7 +259,7 @@ public class OptimizedUniformAssignmentBuilderTest {
 
         AssignmentSpec assignmentSpec = new AssignmentSpec(members);
         SubscribedTopicMetadata subscribedTopicMetadata = new SubscribedTopicMetadata(topicMetadata);
-
+        System.out.println("Topic Metadata " + topicMetadata);
         GroupAssignment computedAssignment = assignor.assign(assignmentSpec, subscribedTopicMetadata);
 
         Map<String, Map<Uuid, Set<Integer>>> expectedAssignment = new HashMap<>();
@@ -277,6 +282,7 @@ public class OptimizedUniformAssignmentBuilderTest {
         checkValidityAndBalance(members, computedAssignment);
     }
 
+    // Example where without sorting, you don't get maximum rack matching
     @Test
     public void testFirstAssignmentThreeMembersThreeTopicsWithMemberAndPartitionRacks2() {
         Map<Uuid, TopicMetadata> topicMetadata = new HashMap<>();
@@ -510,29 +516,29 @@ public class OptimizedUniformAssignmentBuilderTest {
 
         Map<String, AssignmentMemberSpec> members = new TreeMap<>();
 
-        Map<Uuid, Set<Integer>> currentAssignmentForA = new TreeMap<>(
-            mkAssignment(
-                mkTopicAssignment(topic1Uuid, 0, 1),
-                mkTopicAssignment(topic2Uuid, 0, 1)
-            )
-        );
+        List<TopicIdPartition> currentAssignmentForA =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 0, 1),
+                mkTopicIdPartitionList(topic2Uuid, 0, 1)
+            );
         members.put(memberA, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.empty(),
             Arrays.asList(topic1Uuid, topic2Uuid),
+            Collections.emptyMap(),
             currentAssignmentForA
         ));
 
-        Map<Uuid, Set<Integer>> currentAssignmentForB = new TreeMap<>(
-            mkAssignment(
-                mkTopicAssignment(topic1Uuid, 2),
-                mkTopicAssignment(topic2Uuid, 2)
-            )
-        );
+        List<TopicIdPartition> currentAssignmentForB =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 2),
+                mkTopicIdPartitionList(topic2Uuid, 2)
+            );
         members.put(memberB, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.empty(),
             Arrays.asList(topic1Uuid, topic2Uuid),
+            Collections.emptyMap(),
             currentAssignmentForB
         ));
 
@@ -574,29 +580,30 @@ public class OptimizedUniformAssignmentBuilderTest {
         // Initially A was in rack 1 and B was in rack 2, now let's switch them.
         Map<String, AssignmentMemberSpec> members = new TreeMap<>();
 
-        Map<Uuid, Set<Integer>> currentAssignmentForA = new TreeMap<>(
-            mkAssignment(
-                mkTopicAssignment(topic1Uuid, 0, 1),
-                mkTopicAssignment(topic2Uuid, 0)
-            )
-        );
+        List<TopicIdPartition> currentAssignmentForA =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 0, 1),
+                mkTopicIdPartitionList(topic2Uuid, 0)
+            );
+
         members.put(memberA, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.of("rack2"),
             Arrays.asList(topic1Uuid, topic2Uuid),
+            Collections.emptyMap(),
             currentAssignmentForA
         ));
 
-        Map<Uuid, Set<Integer>> currentAssignmentForB = new TreeMap<>(
-            mkAssignment(
-                mkTopicAssignment(topic1Uuid, 2),
-                mkTopicAssignment(topic2Uuid, 1, 2)
-            )
-        );
+        List<TopicIdPartition> currentAssignmentForB =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 2),
+                mkTopicIdPartitionList(topic2Uuid, 1, 2)
+            );
         members.put(memberB, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.of("rack1"),
             Arrays.asList(topic1Uuid, topic2Uuid),
+            Collections.emptyMap(),
             currentAssignmentForB
         ));
 
@@ -638,29 +645,29 @@ public class OptimizedUniformAssignmentBuilderTest {
 
         Map<String, AssignmentMemberSpec> members = new TreeMap<>();
 
-        Map<Uuid, Set<Integer>> currentAssignmentForA = new TreeMap<>(
-            mkAssignment(
-                mkTopicAssignment(topic1Uuid, 0),
-                mkTopicAssignment(topic2Uuid, 0, 2)
-            )
-        );
+        List<TopicIdPartition> currentAssignmentForA =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 0),
+                mkTopicIdPartitionList(topic2Uuid, 0, 2)
+            );
         members.put(memberA, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.of("rack0"),
             Arrays.asList(topic1Uuid, topic2Uuid),
+            Collections.emptyMap(),
             currentAssignmentForA
         ));
 
-        Map<Uuid, Set<Integer>> currentAssignmentForB = new TreeMap<>(
-            mkAssignment(
-                mkTopicAssignment(topic1Uuid, 1, 2),
-                mkTopicAssignment(topic2Uuid, 1)
-            )
-        );
+        List<TopicIdPartition> currentAssignmentForB =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 1, 2),
+                mkTopicIdPartitionList(topic2Uuid, 1)
+            );
         members.put(memberB, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.of("rack1"),
             Arrays.asList(topic1Uuid, topic2Uuid),
+            Collections.emptyMap(),
             currentAssignmentForB
         ));
 
@@ -702,29 +709,29 @@ public class OptimizedUniformAssignmentBuilderTest {
 
         Map<String, AssignmentMemberSpec> members = new TreeMap<>();
 
-        Map<Uuid, Set<Integer>> currentAssignmentForA = new TreeMap<>(
-            mkAssignment(
-                mkTopicAssignment(topic1Uuid, 0, 2),
-                mkTopicAssignment(topic2Uuid, 0)
-            )
-        );
+        List<TopicIdPartition> currentAssignmentForA =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 0, 2),
+                mkTopicIdPartitionList(topic2Uuid, 0)
+            );
         members.put(memberA, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.empty(),
             Arrays.asList(topic1Uuid, topic2Uuid),
+            Collections.emptyMap(),
             currentAssignmentForA
         ));
 
-        Map<Uuid, Set<Integer>> currentAssignmentForB = new TreeMap<>(
-            mkAssignment(
-                mkTopicAssignment(topic1Uuid, 1),
-                mkTopicAssignment(topic2Uuid, 1, 2)
-            )
-        );
+        List<TopicIdPartition> currentAssignmentForB =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 1),
+                mkTopicIdPartitionList(topic2Uuid, 1, 2)
+            );
         members.put(memberB, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.empty(),
             Arrays.asList(topic1Uuid, topic2Uuid),
+            Collections.emptyMap(),
             currentAssignmentForB
         ));
 
@@ -753,37 +760,41 @@ public class OptimizedUniformAssignmentBuilderTest {
         topicMetadata.put(topic1Uuid, new TopicMetadata(
             topic1Uuid,
             topic1Name,
-            3,
-            mkMapOfPartitionRacks(3)
+            2,
+            mkMapOfPartitionRacks(2)
         ));
-        topicMetadata.put(topic2Uuid, new TopicMetadata(
+        /*topicMetadata.put(topic2Uuid, new TopicMetadata(
             topic2Uuid,
             topic2Name,
             3,
             mkMapOfPartitionRacks(3)
-        ));
+        ));*/
 
         Map<String, AssignmentMemberSpec> members = new HashMap<>();
 
-        Map<Uuid, Set<Integer>> currentAssignmentForA = new TreeMap<>(mkAssignment(
-            mkTopicAssignment(topic1Uuid, 0, 2),
-            mkTopicAssignment(topic2Uuid, 0)
-        ));
+        List<TopicIdPartition> currentAssignmentForA =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 0, 2),
+                mkTopicIdPartitionList(topic2Uuid, 0)
+            );
         members.put(memberA, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.empty(),
-            Arrays.asList(topic1Uuid, topic2Uuid),
+            Arrays.asList(topic1Uuid),
+            Collections.emptyMap(),
             currentAssignmentForA
         ));
 
-        Map<Uuid, Set<Integer>> currentAssignmentForB = new TreeMap<>(mkAssignment(
-            mkTopicAssignment(topic1Uuid, 1),
-            mkTopicAssignment(topic2Uuid, 1, 2)
-        ));
+        List<TopicIdPartition> currentAssignmentForB =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 1),
+                mkTopicIdPartitionList(topic2Uuid, 1, 2)
+        );
         members.put(memberB, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.empty(),
-            Arrays.asList(topic1Uuid, topic2Uuid),
+            Arrays.asList(topic1Uuid),
+            Collections.emptyMap(),
             currentAssignmentForB
         ));
 
@@ -791,7 +802,7 @@ public class OptimizedUniformAssignmentBuilderTest {
         members.put(memberC, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.empty(),
-            Arrays.asList(topic1Uuid, topic2Uuid),
+            Arrays.asList(topic1Uuid),
             Collections.emptyMap()
         ));
 
@@ -834,29 +845,29 @@ public class OptimizedUniformAssignmentBuilderTest {
 
         Map<String, AssignmentMemberSpec> members = new TreeMap<>();
 
-        Map<Uuid, Set<Integer>> currentAssignmentForA = new TreeMap<>(
-            mkAssignment(
-                mkTopicAssignment(topic1Uuid, 0),
-                mkTopicAssignment(topic2Uuid, 0, 2)
-            )
-        );
+        List<TopicIdPartition> currentAssignmentForA =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 0),
+                mkTopicIdPartitionList(topic2Uuid, 0, 2)
+            );
         members.put(memberA, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.of("rack0"),
             Arrays.asList(topic1Uuid, topic2Uuid),
+            Collections.emptyMap(),
             currentAssignmentForA
         ));
 
-        Map<Uuid, Set<Integer>> currentAssignmentForB = new TreeMap<>(
-            mkAssignment(
-                mkTopicAssignment(topic1Uuid, 1, 2),
-                mkTopicAssignment(topic2Uuid, 1)
-            )
-        );
+        List<TopicIdPartition> currentAssignmentForB =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 1, 2),
+                mkTopicIdPartitionList(topic2Uuid, 1)
+            );
         members.put(memberB, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.of("rack1"),
             Arrays.asList(topic1Uuid, topic2Uuid),
+            Collections.emptyMap(),
             currentAssignmentForB
         ));
 
@@ -909,25 +920,29 @@ public class OptimizedUniformAssignmentBuilderTest {
 
         Map<String, AssignmentMemberSpec> members = new HashMap<>();
 
-        Map<Uuid, Set<Integer>> currentAssignmentForA = mkAssignment(
-            mkTopicAssignment(topic1Uuid, 0),
-            mkTopicAssignment(topic2Uuid, 0)
-        );
+        List<TopicIdPartition> currentAssignmentForA =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 0),
+                mkTopicIdPartitionList(topic2Uuid, 0)
+            );
         members.put(memberA, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.empty(),
             Arrays.asList(topic1Uuid, topic2Uuid),
+            Collections.emptyMap(),
             currentAssignmentForA
         ));
 
-        Map<Uuid, Set<Integer>> currentAssignmentForB = mkAssignment(
-            mkTopicAssignment(topic1Uuid, 1),
-            mkTopicAssignment(topic2Uuid, 1)
-        );
+        List<TopicIdPartition> currentAssignmentForB =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 1),
+                mkTopicIdPartitionList(topic2Uuid, 1)
+            );
         members.put(memberB, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.empty(),
             Arrays.asList(topic1Uuid, topic2Uuid),
+            Collections.emptyMap(),
             currentAssignmentForB
         ));
 
@@ -971,25 +986,29 @@ public class OptimizedUniformAssignmentBuilderTest {
         // Initial subscriptions were [T1, T2]
         Map<String, AssignmentMemberSpec> members = new HashMap<>();
 
-        Map<Uuid, Set<Integer>> currentAssignmentForA = mkAssignment(
-            mkTopicAssignment(topic1Uuid, 0),
-            mkTopicAssignment(topic2Uuid, 0)
-        );
+        List<TopicIdPartition> currentAssignmentForA =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 0),
+                mkTopicIdPartitionList(topic2Uuid, 0)
+            );
         members.put(memberA, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.empty(),
             Collections.singletonList(topic2Uuid),
+            Collections.emptyMap(),
             currentAssignmentForA
         ));
 
-        Map<Uuid, Set<Integer>> currentAssignmentForB = mkAssignment(
-            mkTopicAssignment(topic1Uuid, 1),
-            mkTopicAssignment(topic2Uuid, 1)
-        );
+        List<TopicIdPartition> currentAssignmentForB =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 1),
+                mkTopicIdPartitionList(topic2Uuid, 1)
+            );
         members.put(memberB, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.empty(),
             Collections.singletonList(topic2Uuid),
+            Collections.emptyMap(),
             currentAssignmentForB
         ));
 
@@ -1017,41 +1036,41 @@ public class OptimizedUniformAssignmentBuilderTest {
             topic1Uuid,
             topic1Name,
             5,
-            mkMapOfPartitionRacks(3)
+            mkMapOfPartitionRacks(5)
         ));
         topicMetadata.put(topic2Uuid, new TopicMetadata(
             topic2Uuid,
             topic2Name,
             2,
-            mkMapOfPartitionRacks(3)
+            mkMapOfPartitionRacks(2)
         ));
 
         // Initial subscriptions were [T1, T2].
         Map<String, AssignmentMemberSpec> members = new TreeMap<>();
 
-        Map<Uuid, Set<Integer>> currentAssignmentForA = new TreeMap<>(
-            mkAssignment(
-                mkTopicAssignment(topic1Uuid, 0, 2, 4),
-                mkTopicAssignment(topic2Uuid, 0)
-            )
-        );
+        List<TopicIdPartition> currentAssignmentForA =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 0, 2, 4),
+                mkTopicIdPartitionList(topic2Uuid, 0)
+            );
         members.put(memberA, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.of("rack0"),
             Collections.singletonList(topic1Uuid),
+            Collections.emptyMap(),
             currentAssignmentForA
         ));
 
-        Map<Uuid, Set<Integer>> currentAssignmentForB = new TreeMap<>(
-            mkAssignment(
-                mkTopicAssignment(topic1Uuid, 1, 3),
-                mkTopicAssignment(topic2Uuid, 1)
-            )
-        );
+        List<TopicIdPartition> currentAssignmentForB =
+            combineTopicIdPartitionLists(
+                mkTopicIdPartitionList(topic1Uuid, 1, 3),
+                mkTopicIdPartitionList(topic2Uuid, 1)
+            );
         members.put(memberB, new AssignmentMemberSpec(
             Optional.empty(),
             Optional.of("rack1"),
             Collections.singletonList(topic1Uuid),
+            Collections.emptyMap(),
             currentAssignmentForB
         ));
 

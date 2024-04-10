@@ -483,10 +483,16 @@ public abstract class AbstractStickyAssignor extends AbstractPartitionAssignor {
                 this.consumerRacks = Collections.emptyMap();
                 this.partitionRacks = Collections.emptyMap();
             }
-            numConsumersByPartition = partitionRacks.entrySet().stream()
-                    .collect(Collectors.toMap(Entry::getKey, e -> e.getValue().stream()
-                        .map(r -> consumersByRack.getOrDefault(r, Collections.emptyList()).size())
-                        .reduce(0, Integer::sum)));
+            numConsumersByPartition = new HashMap<>();
+            for (Map.Entry<TopicPartition, Set<String>> entry : partitionRacks.entrySet()) {
+                TopicPartition tp = entry.getKey();
+                int sum = 0;
+                for (String rack : entry.getValue()) {
+                    List<String> rackConsumers = consumersByRack.getOrDefault(rack, Collections.emptyList());
+                    sum += rackConsumers.size();
+                }
+                numConsumersByPartition.put(tp, sum);
+            }
         }
 
         private boolean racksMismatch(String consumer, TopicPartition tp) {

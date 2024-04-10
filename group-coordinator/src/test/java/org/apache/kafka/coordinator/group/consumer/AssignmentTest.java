@@ -18,6 +18,7 @@ package org.apache.kafka.coordinator.group.consumer;
 
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.coordinator.group.generated.ConsumerGroupTargetAssignmentMemberValue;
+import org.apache.kafka.server.common.TopicIdPartition;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
@@ -41,7 +42,7 @@ public class AssignmentTest {
     public void testPartitionsAndMetadataCannotBeNull() {
         assertThrows(NullPointerException.class, () -> new Assignment(
             (byte) 1,
-            null,
+            (List<TopicIdPartition>) null,
             new VersionedMetadata(
                 (short) 1,
                 ByteBuffer.wrap("hello".getBytes(StandardCharsets.UTF_8))

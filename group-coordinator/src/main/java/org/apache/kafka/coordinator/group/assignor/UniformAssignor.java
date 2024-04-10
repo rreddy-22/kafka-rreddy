@@ -20,10 +20,13 @@ import org.apache.kafka.common.Uuid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * The Uniform Assignor distributes topic partitions among group members for a
@@ -72,16 +75,16 @@ public class UniformAssignor implements PartitionAssignor {
 
         if (assignmentSpec.members().isEmpty())
             return new GroupAssignment(Collections.emptyMap());
-
-        if (allSubscriptionsEqual(assignmentSpec.members())) {
+        //System.out.println("Inside assign");
+        //if (allSubscriptionsEqual(assignmentSpec.members())) {
             LOG.debug("Detected that all members are subscribed to the same set of topics, invoking the "
                 + "optimized assignment algorithm");
             assignmentBuilder = new OptimizedUniformAssignmentBuilder(assignmentSpec, subscribedTopicDescriber);
-        } else {
-            LOG.debug("Detected that the members are subscribed to different sets of topics, invoking the "
-                + "general assignment algorithm");
-            assignmentBuilder = new GeneralUniformAssignmentBuilder(assignmentSpec, subscribedTopicDescriber);
-        }
+        //} else {
+            //LOG.debug("Detected that the members are subscribed to different sets of topics, invoking the "
+               // + "general assignment algorithm");
+           // assignmentBuilder = new GeneralUniformAssignmentBuilder(assignmentSpec, subscribedTopicDescriber);
+        //}
 
         return assignmentBuilder.buildAssignment();
     }

@@ -39,22 +39,22 @@ import java.util.concurrent.TimeUnit;
 
 @State(Scope.Benchmark)
 @Fork(value = 1)
-@Warmup(iterations = 5)
-@Measurement(iterations = 7)
+@Warmup(iterations = 3)
+@Measurement(iterations = 3)
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
 public class ServerSideAssignorBenchmark {
 
-    @Param({"100"})
+    @Param({"10", "50", "100"})
     private int partitionsPerTopicCount;
 
-    @Param({"10"})
+    @Param({"100"})
     private int topicCount;
 
-    @Param({"10","150","500","1000", "10000"})
+    @Param({"500", "1000"})
     private int memberCount;
 
-    @Param({"false"})
+    @Param({"true"})
     private boolean isRackAware;
 
     @Param({"true"})

@@ -182,10 +182,13 @@ public abstract class AbstractUniformAssignmentBuilder {
             Set<Uuid> topicIds
         ) {
             Map<String, List<String>> membersByRack = new HashMap<>();
+            Map<String, String> tempMemberRacks = new HashMap<>(assignmentSpec.members().size());
+
             assignmentSpec.members().forEach((memberId, assignmentMemberSpec) ->
-                assignmentMemberSpec.rackId().filter(r -> !r.isEmpty()).ifPresent(
-                    rackId -> membersByRack.computeIfAbsent(rackId, __ -> new ArrayList<>()).add(memberId)
-                )
+                assignmentMemberSpec.rackId().filter(r -> !r.isEmpty()).ifPresent(rackId -> {
+                    membersByRack.computeIfAbsent(rackId, __ -> new ArrayList<>()).add(memberId);
+                    tempMemberRacks.put(memberId, rackId);
+                })
             );
 
             Set<String> allPartitionRacks;
@@ -199,14 +202,15 @@ public abstract class AbstractUniformAssignmentBuilder {
                 allPartitionRacks = new HashSet<>();
                 processTopicIdPartitions(topicIds, subscribedTopicDescriber, tp -> {
                     Set<String> racks = subscribedTopicDescriber.racksForPartition(tp.topicId(), tp.partitionId());
-                    racksPerPartition.put(tp, racks);
-                    if (!racks.isEmpty()) allPartitionRacks.addAll(racks);
+                    if (!racks.isEmpty()) {
+                        racksPerPartition.put(tp, racks);
+                        allPartitionRacks.addAll(racks);
+                    }
                 });
             }
 
             if (useRackAwareAssignment(membersByRack.keySet(), allPartitionRacks, racksPerPartition)) {
-                this.memberRacks = new HashMap<>(assignmentSpec.members().size());
-                membersByRack.forEach((rack, rackMembers) -> rackMembers.forEach(c -> memberRacks.put(c, rack)));
+                this.memberRacks = tempMemberRacks;
                 this.partitionRacks = racksPerPartition;
                 useRackStrategy = true;
             } else {
@@ -242,6 +246,7 @@ public abstract class AbstractUniformAssignmentBuilder {
         protected boolean racksMismatch(String memberId, TopicIdPartition tp) {
             String memberRack = memberRacks.get(memberId);
             Set<String> replicaRacks = partitionRacks.get(tp);
+            //System.out.println("Member rack is" + memberRack + " for member" + memberId + "partition rack is" + replicaRacks + "for partition" + tp);
             return memberRack == null || (replicaRacks == null || !replicaRacks.contains(memberRack));
         }
 
@@ -254,7 +259,7 @@ public abstract class AbstractUniformAssignmentBuilder {
         protected List<TopicIdPartition> sortPartitionsByRackMembers(Collection<TopicIdPartition> topicIdPartitions) {
 
             List<TopicIdPartition> filteredPartitions = new LinkedList<>(topicIdPartitions);
-
+            // IF THERE ARE NO MATCHING RACK MEMBERS MAYBE WE CAN REMOVE IT FROM THE LIST
             filteredPartitions.sort(Comparator.comparing(tp ->
                 membersWithSameRackAsPartition.getOrDefault(tp, Collections.emptyList()).size())
             );

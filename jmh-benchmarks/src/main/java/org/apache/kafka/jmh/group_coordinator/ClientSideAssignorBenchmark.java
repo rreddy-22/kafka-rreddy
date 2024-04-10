@@ -40,16 +40,16 @@ import static org.apache.kafka.clients.consumer.internals.AbstractStickyAssignor
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
 public class ClientSideAssignorBenchmark {
 
-    @Param({"1000"})
+    @Param({"10", "50", "100"})
     private int partitionsPerTopicCount;
 
     @Param({"100"})
     private int topicCount;
 
-    @Param({"10"})
+    @Param({"500", "1000", "10000"})
     private int memberCount;
 
-    @Param({"false"})
+    @Param({"true"})
     private boolean isRackAware;
 
     @Param({"true"})

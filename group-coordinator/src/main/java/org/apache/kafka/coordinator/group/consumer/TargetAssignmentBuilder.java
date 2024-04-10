@@ -238,7 +238,9 @@ public class TargetAssignmentBuilder {
      * @throws PartitionAssignorException if the target assignment cannot be computed.
      */
     public TargetAssignmentResult build() throws PartitionAssignorException {
+        //System.out.println("inside target assignment build");
         Map<String, AssignmentMemberSpec> memberSpecs = new HashMap<>();
+        //System.out.println("target assignment inside build" + targetAssignment);
 
         // Prepare the member spec for all members.
         members.forEach((memberId, member) -> memberSpecs.put(memberId, createAssignmentMemberSpec(
@@ -267,6 +269,8 @@ public class TargetAssignmentBuilder {
                 ));
             }
         });
+
+        //System.out.println("updated members in target assignment builder " + updatedMembers);
 
         // Prepare the topic metadata.
         Map<Uuid, TopicMetadata> topicMetadataMap = new HashMap<>();
@@ -349,7 +353,8 @@ public class TargetAssignmentBuilder {
             Optional.ofNullable(member.instanceId()),
             Optional.ofNullable(member.rackId()),
             subscribedTopics,
-            targetAssignment.partitions()
+            Collections.emptyMap(),
+            targetAssignment.partitionsList()
         );
     }
 }

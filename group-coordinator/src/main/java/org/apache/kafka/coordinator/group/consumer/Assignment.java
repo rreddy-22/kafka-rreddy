@@ -18,10 +18,12 @@ package org.apache.kafka.coordinator.group.consumer;
 
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.coordinator.group.generated.ConsumerGroupTargetAssignmentMemberValue;
+import org.apache.kafka.server.common.TopicIdPartition;
 
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -48,6 +50,12 @@ public class Assignment {
     private final Map<Uuid, Set<Integer>> partitions;
 
     /**
+     * The partitions assigned to the member list topicIdPartitions.
+     */
+    private final List<TopicIdPartition> partitionsList;
+
+
+    /**
      * The metadata assigned to the member.
      */
     private final VersionedMetadata metadata;
@@ -64,12 +72,24 @@ public class Assignment {
 
     public Assignment(
         byte error,
+        List<TopicIdPartition> partitionsList,
+        VersionedMetadata metadata
+    ) {
+        this.error = error;
+        this.partitions = Collections.emptyMap();
+        this.partitionsList = Collections.unmodifiableList(partitionsList);
+        this.metadata = Objects.requireNonNull(metadata);
+    }
+
+    public Assignment(
+        byte error,
         Map<Uuid, Set<Integer>> partitions,
         VersionedMetadata metadata
     ) {
         this.error = error;
         this.partitions = Collections.unmodifiableMap(Objects.requireNonNull(partitions));
         this.metadata = Objects.requireNonNull(metadata);
+        this.partitionsList = Collections.emptyList();
     }
 
     /**
@@ -84,6 +104,13 @@ public class Assignment {
      */
     public Map<Uuid, Set<Integer>> partitions() {
         return partitions;
+    }
+
+    /**
+     * @return The assigned partitions list.
+     */
+    public List<TopicIdPartition> partitionsList() {
+        return partitionsList;
     }
 
     /**
@@ -102,6 +129,7 @@ public class Assignment {
 
         if (error != that.error) return false;
         if (!partitions.equals(that.partitions)) return false;
+        if (!partitionsList.equals(that.partitionsList)) return false;
         return metadata.equals(that.metadata);
     }
 
@@ -109,6 +137,7 @@ public class Assignment {
     public int hashCode() {
         int result = error;
         result = 31 * result + partitions.hashCode();
+        result = 31 * result + partitionsList.hashCode();
         result = 31 * result + metadata.hashCode();
         return result;
     }
@@ -118,6 +147,7 @@ public class Assignment {
         return "Assignment(" +
             "error=" + error +
             ", partitions=" + partitions +
+            ", partitionsList=" + partitionsList +
             ", metadata=" + metadata +
             ')';
     }
