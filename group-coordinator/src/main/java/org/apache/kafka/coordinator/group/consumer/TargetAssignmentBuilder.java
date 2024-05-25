@@ -295,14 +295,14 @@ public class TargetAssignmentBuilder {
      * @throws PartitionAssignorException if the target assignment cannot be computed.
      */
     public TargetAssignmentResult build() throws PartitionAssignorException {
-        Map<String, MemberSubscriptionSpec> memberSpecs = new HashMap<>();
+        Map<String, MemberSubscriptionSpec> memberSubscriptions = new HashMap<>();
         Map<String, Map<Uuid, Set<Integer>>> assignedPartitions = new HashMap<>(members.size());
 
         // Prepare the member spec for all members.
         members.forEach((memberId, member) -> {
             Assignment assignment = targetAssignment.getOrDefault(memberId, Assignment.EMPTY);
 
-            memberSpecs.put(memberId, createMemberSubscriptionSpec(
+            memberSubscriptions.put(memberId, createMemberSubscriptionSpec(
                 member,
                 topicsImage
             ));
@@ -315,7 +315,7 @@ public class TargetAssignmentBuilder {
         // Update the member spec if updated or deleted members.
         updatedMembers.forEach((memberId, updatedMemberOrNull) -> {
             if (updatedMemberOrNull == null) {
-                memberSpecs.remove(memberId);
+                memberSubscriptions.remove(memberId);
             } else {
                 Assignment assignment = targetAssignment.getOrDefault(memberId, Assignment.EMPTY);
 
@@ -327,7 +327,7 @@ public class TargetAssignmentBuilder {
                     }
                 }
 
-                memberSpecs.put(memberId, createMemberSubscriptionSpec(
+                memberSubscriptions.put(memberId, createMemberSubscriptionSpec(
                     updatedMemberOrNull,
                     topicsImage
                 ));
@@ -350,7 +350,7 @@ public class TargetAssignmentBuilder {
         // Compute the assignment.
         GroupAssignment newGroupAssignment = assignor.assign(
             new GroupSpecImpl(
-                Collections.unmodifiableMap(memberSpecs),
+                Collections.unmodifiableMap(memberSubscriptions),
                 subscriptionType,
                 assignedPartitions,
                 invertedTargetAssignment
@@ -363,7 +363,7 @@ public class TargetAssignmentBuilder {
         List<CoordinatorRecord> records = new ArrayList<>();
         Map<String, Assignment> newTargetAssignment = new HashMap<>();
 
-        memberSpecs.keySet().forEach(memberId -> {
+        memberSubscriptions.keySet().forEach(memberId -> {
             Assignment oldMemberAssignment = targetAssignment.get(memberId);
             Assignment newMemberAssignment = newMemberAssignment(newGroupAssignment, memberId);
 

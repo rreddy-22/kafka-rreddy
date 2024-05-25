@@ -189,7 +189,7 @@ public class OptimizedUniformAssignmentBuilder extends AbstractUniformAssignment
 
         groupSpec.memberSubscriptions().forEach((memberId, memberSubscriptionSpec) -> {
             List<TopicIdPartition> validCurrentMemberAssignment = validCurrentMemberAssignment(
-                groupSpec.currentMemberAssignment(memberId)
+                groupSpec.memberAssignment(memberId)
             );
 
             int currentAssignmentSize = validCurrentMemberAssignment.size();

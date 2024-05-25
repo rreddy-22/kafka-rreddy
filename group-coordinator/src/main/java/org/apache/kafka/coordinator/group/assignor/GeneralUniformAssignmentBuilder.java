@@ -197,7 +197,7 @@ public class GeneralUniformAssignmentBuilder extends AbstractUniformAssignmentBu
      */
     private void assignStickyPartitions() {
         memberSubscriptions.forEach((memberId, subscriptionSpec) ->
-            groupSpec.currentMemberAssignment(memberId).forEach((topicId, currentAssignment) -> {
+            groupSpec.memberAssignment(memberId).forEach((topicId, currentAssignment) -> {
                 if (subscriptionSpec.subscribedTopicIds().contains(topicId)) {
                     currentAssignment.forEach(partition -> {
                         TopicIdPartition topicIdPartition = new TopicIdPartition(topicId, partition);
@@ -652,10 +652,10 @@ public class GeneralUniformAssignmentBuilder extends AbstractUniformAssignmentBu
          * Initializes an AssignmentManager, setting up the necessary data structures.
          */
         public AssignmentManager(
-            Map<String, MemberSubscriptionSpec> members,
+            Map<String, MemberSubscriptionSpec> memberSubscriptions,
             SubscribedTopicDescriber subscribedTopicDescriber
         ) {
-            members.forEach((memberId, member) -> {
+            memberSubscriptions.forEach((memberId, member) -> {
                 int maxSize = member.subscribedTopicIds().stream()
                     .mapToInt(subscribedTopicDescriber::numPartitions)
                     .sum();

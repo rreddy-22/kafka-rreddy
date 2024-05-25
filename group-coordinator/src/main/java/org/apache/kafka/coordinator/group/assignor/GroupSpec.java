@@ -47,5 +47,5 @@ public interface GroupSpec {
      * @param memberId          The member Id.
      * @return A map of topic Ids to sets of partition numbers.
      */
-    Map<Uuid, Set<Integer>> currentMemberAssignment(String memberId);
+    Map<Uuid, Set<Integer>> memberAssignment(String memberId);
 }

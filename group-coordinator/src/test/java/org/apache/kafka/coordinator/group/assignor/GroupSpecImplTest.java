@@ -83,8 +83,8 @@ public class GroupSpecImplTest {
         );
         assignedPartitions.put("test-member", topicPartitions);
 
-        assertEquals(topicPartitions, groupSpec.currentMemberAssignment("test-member"));
-        assertEquals(Collections.emptyMap(), groupSpec.currentMemberAssignment("unknown-member"));
+        assertEquals(topicPartitions, groupSpec.memberAssignment("test-member"));
+        assertEquals(Collections.emptyMap(), groupSpec.memberAssignment("unknown-member"));
     }
 
     @Test

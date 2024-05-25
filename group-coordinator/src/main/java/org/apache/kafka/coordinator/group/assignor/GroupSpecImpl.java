@@ -95,7 +95,7 @@ public class GroupSpecImpl implements GroupSpec {
      * {@inheritDoc}
      */
     @Override
-    public Map<Uuid, Set<Integer>> currentMemberAssignment(String memberId) {
+    public Map<Uuid, Set<Integer>> memberAssignment(String memberId) {
         return assignedPartitions.getOrDefault(memberId, Collections.emptyMap());
     }
 

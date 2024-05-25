@@ -162,7 +162,7 @@ public class RangeAssignor implements PartitionAssignor {
             List<MemberWithRemainingAssignments> potentiallyUnfilledMembers = new ArrayList<>();
 
             for (String memberId : membersForTopic) {
-                Set<Integer> assignedPartitionsForTopic = groupSpec.currentMemberAssignment(memberId)
+                Set<Integer> assignedPartitionsForTopic = groupSpec.memberAssignment(memberId)
                     .getOrDefault(topicId, Collections.emptySet());
 
                 int currentAssignmentSize = assignedPartitionsForTopic.size();
