@@ -191,7 +191,7 @@ public class TransactionManager {
     private volatile RuntimeException lastError = null;
     private volatile ProducerIdAndEpoch producerIdAndEpoch;
     private volatile boolean transactionStarted = false;
-    private volatile boolean epochBumpRequired = false;
+    private volatile boolean epochBumpTriggerRequired = false;
     private volatile long latestFinalizedFeaturesEpoch = -1;
     private volatile boolean isTransactionV2Enabled = false;
 
@@ -351,7 +351,7 @@ public class TransactionManager {
         enqueueRequest(handler);
 
         // If an epoch bump is required for recovery, initialize the transaction after completing the EndTxn request.
-        if (epochBumpRequired) {
+        if (epochBumpTriggerRequired) {
             return initializeTransactions(this.producerIdAndEpoch);
         }
 
@@ -545,7 +545,7 @@ public class TransactionManager {
     }
 
     synchronized void requestEpochBumpForPartition(TopicPartition tp) {
-        epochBumpRequired = true;
+        epochBumpTriggerRequired = true;
         this.partitionsToRewriteSequences.add(tp);
     }
 
@@ -564,12 +564,12 @@ public class TransactionManager {
         }
         this.partitionsToRewriteSequences.clear();
 
-        epochBumpRequired = false;
+        epochBumpTriggerRequired = false;
     }
 
     synchronized void bumpIdempotentEpochAndResetIdIfNeeded() {
         if (!isTransactional()) {
-            if (epochBumpRequired) {
+            if (epochBumpTriggerRequired) {
                 bumpIdempotentProducerEpoch();
             }
             if (currentState != State.INITIALIZING && !hasProducerId()) {
@@ -675,8 +675,8 @@ public class TransactionManager {
                 || exception instanceof UnsupportedVersionException) {
             transitionToFatalError(exception);
         } else if (isTransactional()) {
-            if (canBumpEpoch() && !isCompleting()) {
-                epochBumpRequired = true;
+            if (canTriggerEpochBump() && !isCompleting()) {
+                epochBumpTriggerRequired = true;
             }
             transitionToAbortableError(exception);
         }
@@ -760,8 +760,8 @@ public class TransactionManager {
                         // For the transactional producer, we bump the epoch if possible, otherwise we transition to a fatal error
                         String unackedMessagesErr = "The client hasn't received acknowledgment for some previously " +
                                 "sent messages and can no longer retry them. ";
-                        if (canBumpEpoch()) {
-                            epochBumpRequired = true;
+                        if (canTriggerEpochBump()) {
+                            epochBumpTriggerRequired = true;
                             KafkaException exception = new KafkaException(unackedMessagesErr + "It is safe to abort " +
                                     "the transaction and continue.");
                             transitionToAbortableError(exception);
@@ -1164,23 +1164,42 @@ public class TransactionManager {
         return result;
     }
 
+    /**
+     * Determines if an epoch bump can be triggered manually based on the api versions.
+     *
+     * <ol>
+     *   <li><b>Client-Triggered Epoch Bump</b>:
+     *          If the coordinator supports epoch bumping (initProducerIdVersion.maxVersion() >= 3),
+     *          client-triggered epoch bumping is allowed, returns true.
+     *          <code>epochBumpTriggerRequired</code> must be set to true in this case.</li>
+     *
+     *   <li><b>No Epoch Bump Allowed</b>:
+     *          If the coordinator does not support epoch bumping, returns false.</li>
+     *
+     *   <li><b>Server-Triggered Only</b>:
+     *          When TransactionV2 is enabled, epoch bumping is handled automatically
+     *          by the server in EndTxn, so manual epoch bumping is not required, returns false.</li>
+     * </ol>
+     *
+     * @return true if a client-triggered epoch bump is allowed, otherwise false.
+     */
     // package-private for testing
-    boolean canBumpEpoch() {
-        if (!isTransactional()) {
-            return true;
+    boolean canTriggerEpochBump() {
+        if (!coordinatorSupportsBumpingEpoch) {
+            return false;
         }
-
-        return coordinatorSupportsBumpingEpoch;
+        // If coordinator supports epoch bumping, client can trigger the bump manually if TransactionsV2 is disabled.
+        return !isTransactionV2Enabled;
     }
 
     private void completeTransaction() {
-        if (epochBumpRequired) {
+        if (epochBumpTriggerRequired) {
             transitionTo(State.INITIALIZING);
         } else {
             transitionTo(State.READY);
         }
         lastError = null;
-        epochBumpRequired = false;
+        epochBumpTriggerRequired = false;
         transactionStarted = false;
         newPartitionsInTransaction.clear();
         pendingPartitionsInTransaction.clear();
@@ -1209,9 +1228,31 @@ public class TransactionManager {
             transitionToAbortableError(e);
         }
 
+        /**
+         * Determines if an error should be treated as abortable or fatal, based on transaction state and configuration.
+         *
+         *  - **Transactional with Epoch Bumping Available**:
+         *      If the producer can trigger an epoch bump, the error is treated as abortable,
+         *      allowing recovery by restarting the transaction with a new epoch.
+         *
+         * - **TransactionV2 Enabled**:
+         *      When TransactionV2 is enabled, the producer automatically bumps the epoch on each transaction commit or abort,
+         *      making errors abortable without manual intervention.
+         *
+         * - **Non-Transactional Producers**:
+         *      For non-transactional producers, errors are considered abortable since no transaction rollback is necessary.
+         *
+         * - **Fatal Condition**:
+         *      In all other cases, the error is treated as fatal, as the producer cannot recover without compromising
+         *      transactional guarantees.
+         *
+         * @param e the error to determine as either abortable or fatal.
+         */
         void abortableErrorIfPossible(RuntimeException e) {
-            if (canBumpEpoch()) {
-                epochBumpRequired = true;
+            if (!isTransactional() || canTriggerEpochBump()) {
+                epochBumpTriggerRequired = true;
+                abortableError(e);
+            } else if (isTransactionV2Enabled) {
                 abortableError(e);
             } else {
                 fatalError(e);

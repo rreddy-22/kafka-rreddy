@@ -3506,13 +3506,13 @@ public class TransactionManagerTest {
     }
 
     @Test
-    public void testCanBumpEpochDuringCoordinatorDisconnect() {
+    public void testCanTriggerEpochBumpDuringCoordinatorDisconnect() {
         doInitTransactions(0, (short) 0);
         runUntil(() -> transactionManager.coordinator(CoordinatorType.TRANSACTION) != null);
-        assertTrue(transactionManager.canBumpEpoch());
+        assertTrue(transactionManager.canTriggerEpochBump());
 
         apiVersions.remove(transactionManager.coordinator(CoordinatorType.TRANSACTION).idString());
-        assertTrue(transactionManager.canBumpEpoch());
+        assertTrue(transactionManager.canTriggerEpochBump());
     }
 
     @ParameterizedTest
