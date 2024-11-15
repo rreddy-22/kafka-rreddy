@@ -30,7 +30,7 @@ import org.apache.kafka.common.errors.{InvalidPidMappingException, Transactional
 import org.apache.kafka.coordinator.transaction.{TransactionLogConfig, TransactionStateManagerConfig}
 import org.apache.kafka.coordinator.group.GroupCoordinatorConfig
 import org.apache.kafka.server.config.{ReplicationConfigs, ServerConfigs, ServerLogConfigs}
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows}
 import org.junit.jupiter.api.{AfterEach, BeforeEach, TestInfo}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
@@ -101,26 +101,20 @@ class TransactionsExpirationTest extends KafkaServerTestHarness {
     waitUntilTransactionalStateExists()
     waitUntilTransactionalStateExpires()
 
-    try {
-      // Start a new transaction and attempt to send, which will trigger an AddPartitionsToTxnRequest,
-      // which will fail due to the expired transactional ID, causing a fatal error.
-      producer.beginTransaction()
-      val failedFuture = producer.send(TestUtils.producerRecordWithExpectedTransactionStatus(topic1, 3, "1", "1", willBeCommitted = false))
-      TestUtils.waitUntilTrue(() => failedFuture.isDone, "Producer future never completed.")
+    // Start a new transaction and attempt to send, triggering an AddPartitionsToTxnRequest that will fail
+    // due to the expired transactional ID, resulting in a fatal error.
+    producer.beginTransaction()
+    val failedFuture = producer.send(TestUtils.producerRecordWithExpectedTransactionStatus(topic1, 3, "1", "1", willBeCommitted = false))
+    TestUtils.waitUntilTrue(() => failedFuture.isDone, "Producer future never completed.")
+    org.apache.kafka.test.TestUtils.assertFutureThrows(failedFuture, classOf[InvalidPidMappingException])
 
-      org.apache.kafka.test.TestUtils.assertFutureThrows(failedFuture, classOf[InvalidPidMappingException])
+    // Assert that aborting the transaction throws a KafkaException due to the fatal error.
+    assertThrows(classOf[KafkaException], () => producer.abortTransaction())
 
-      // Since this is a fatal error, attempting to abort should fail.
-      producer.abortTransaction()
-    } catch {
-      case _: KafkaException =>
-        // Close the producer to recover from the fatal error.
-        producer.close()
-
-        // Create a new producer instance and reinitialize transactions.
-        producer = TestUtils.createTransactionalProducer("transactionalProducer", brokers)
-        producer.initTransactions()
-    }
+    // Close the producer and reinitialize to recover from the fatal error.
+    producer.close()
+    producer = TestUtils.createTransactionalProducer("transactionalProducer", brokers)
+    producer.initTransactions()
 
     // Proceed with a new transaction after reinitializing.
     producer.beginTransaction()

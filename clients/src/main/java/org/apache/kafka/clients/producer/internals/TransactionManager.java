@@ -338,8 +338,6 @@ public class TransactionManager {
         if (!newPartitionsInTransaction.isEmpty())
             enqueueRequest(addPartitionsToTransactionHandler());
 
-        // We must first abort the transaction, because the producer will be
-        // fenced if we directly call InitProducerId when an epoch bump is required.
         EndTxnRequest.Builder builder = new EndTxnRequest.Builder(
             new EndTxnRequestData()
                 .setTransactionalId(transactionalId)
@@ -351,11 +349,13 @@ public class TransactionManager {
 
         EndTxnHandler handler = new EndTxnHandler(builder);
         enqueueRequest(handler);
-        if (!epochBumpRequired) {
-            return handler.result;
+
+        // If an epoch bump is required for recovery, initialize the transaction after completing the EndTxn request.
+        if (epochBumpRequired) {
+            return initializeTransactions(this.producerIdAndEpoch);
         }
 
-        return initializeTransactions(this.producerIdAndEpoch);
+        return handler.result;
     }
 
     public synchronized TransactionalRequestResult sendOffsetsToTransaction(final Map<TopicPartition, OffsetAndMetadata> offsets,
