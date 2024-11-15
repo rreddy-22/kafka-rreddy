@@ -697,7 +697,7 @@ class TransactionsTest extends IntegrationTestHarness {
     assertThrows(classOf[IllegalStateException], () => producer.initTransactions())
   }
 
-  @ParameterizedTest(name = TestInfoUtils.TestWithParameterizedQuorumAndGroupProtocolNames)
+  @ParameterizedTest
   @CsvSource(Array(
     "kraft,classic,false",
     "kraft,consumer,false",
@@ -762,7 +762,7 @@ class TransactionsTest extends IntegrationTestHarness {
     }
   }
 
-  @ParameterizedTest(name = TestInfoUtils.TestWithParameterizedQuorumAndGroupProtocolNames)
+  @ParameterizedTest
   @CsvSource(Array(
     "kraft, classic, true",
     "kraft, consumer, true"

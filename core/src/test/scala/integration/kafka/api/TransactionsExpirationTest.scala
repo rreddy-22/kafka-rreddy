@@ -172,6 +172,14 @@ class TransactionsExpirationTest extends KafkaServerTestHarness {
     producer.send(TestUtils.producerRecordWithExpectedTransactionStatus(topic1, 3, "3", "3", willBeCommitted = true))
     producer.commitTransaction()
 
+    // Wait until the epoch is bumped after commit transaction in TV2.
+    if (isTV2Enabled) {
+      TestUtils.waitUntilTrue(() => {
+        val updatedState = producerState
+        updatedState.nonEmpty && updatedState.head.producerEpoch > oldProducerEpoch + 2
+      }, "Producer epoch was not updated after commitTransaction with TV2 enabled.", 30000)
+    }
+
     // Producer IDs should repopulate.
     var pState2 : List[ProducerState] = null
     TestUtils.waitUntilTrue(() => {pState2 = producerState; pState2.nonEmpty}, "Producer IDs for topic1 did not propagate quickly")
