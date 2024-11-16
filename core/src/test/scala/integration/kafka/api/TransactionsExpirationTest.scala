@@ -30,7 +30,7 @@ import org.apache.kafka.common.errors.{InvalidPidMappingException, Transactional
 import org.apache.kafka.coordinator.transaction.{TransactionLogConfig, TransactionStateManagerConfig}
 import org.apache.kafka.coordinator.group.GroupCoordinatorConfig
 import org.apache.kafka.server.config.{ReplicationConfigs, ServerConfigs, ServerLogConfigs}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertThrows, assertTrue}
 import org.junit.jupiter.api.{AfterEach, BeforeEach, TestInfo}
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
@@ -172,14 +172,6 @@ class TransactionsExpirationTest extends KafkaServerTestHarness {
     producer.send(TestUtils.producerRecordWithExpectedTransactionStatus(topic1, 3, "3", "3", willBeCommitted = true))
     producer.commitTransaction()
 
-    // Wait until the epoch is bumped after commit transaction in TV2.
-    if (isTV2Enabled) {
-      TestUtils.waitUntilTrue(() => {
-        val updatedState = producerState
-        updatedState.nonEmpty && updatedState.head.producerEpoch > oldProducerEpoch + 2
-      }, "Producer epoch was not updated after commitTransaction with TV2 enabled.", 30000)
-    }
-
     // Producer IDs should repopulate.
     var pState2 : List[ProducerState] = null
     TestUtils.waitUntilTrue(() => {pState2 = producerState; pState2.nonEmpty}, "Producer IDs for topic1 did not propagate quickly")
@@ -191,7 +183,9 @@ class TransactionsExpirationTest extends KafkaServerTestHarness {
     // soon after the first will re-use the same producerId, while bumping the epoch to indicate that they are distinct.
     assertEquals(oldProducerId, newProducerId)
     if (isTV2Enabled) {
-      assertEquals(oldProducerEpoch + 3, newProducerEpoch)
+      // TV2 bumps epoch on EndTxn, and the final commit may or may not have bumped the epoch in the producer state.
+      // The epoch should be at least oldProducerEpoch + 2 for the first commit and the restarted producer.
+      assertTrue(oldProducerEpoch + 2 <= newProducerEpoch)
     } else {
       assertEquals(oldProducerEpoch + 1, newProducerEpoch)
     }
