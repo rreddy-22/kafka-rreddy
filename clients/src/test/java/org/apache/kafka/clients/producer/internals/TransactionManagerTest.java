@@ -678,7 +678,7 @@ public class TransactionManagerTest {
         assertEquals(2, transactionManager.sequenceNumber(tp0));
 
         // The producerId might be reset due to a failure on another partition
-        transactionManager.requestEpochBumpForPartition(tp1);
+        transactionManager.requestIdempotentEpochBumpForPartition(tp1);
         transactionManager.bumpIdempotentEpochAndResetIdIfNeeded();
         initializeIdempotentProducerId(producerId + 1, (short) 0);
 
@@ -814,7 +814,7 @@ public class TransactionManagerTest {
         transactionManager.incrementSequenceNumber(tp1, 3);
         assertEquals(transactionManager.sequenceNumber(tp1), 3);
 
-        transactionManager.requestEpochBumpForPartition(tp0);
+        transactionManager.requestIdempotentEpochBumpForPartition(tp0);
         transactionManager.bumpIdempotentEpochAndResetIdIfNeeded();
         assertEquals(transactionManager.sequenceNumber(tp0), 0);
         assertEquals(transactionManager.sequenceNumber(tp1), 3);
