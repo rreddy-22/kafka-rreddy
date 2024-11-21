@@ -477,6 +477,26 @@ public class TransactionManager {
         }
     }
 
+    /**
+     * Transitions to an abortable error state if the coordinator can handle an abortable error or
+     * to a fatal error if not.
+     *
+     * @param abortableException    The exception in case of an abortable error.
+     * @param fatalException        The exception in case of a fatal error.
+     */
+    private void transitionToAbortableErrorOrFatalError(
+        RuntimeException abortableException,
+        RuntimeException fatalException
+    ) {
+        if (canHandleAbortableError()) {
+            if (needToTriggerEpochBumpFromClient())
+                clientSideEpochBumpTriggerRequired = true;
+            transitionToAbortableError(abortableException);
+        } else {
+            transitionToFatalError(fatalException);
+        }
+    }
+
     // visible for testing
     synchronized boolean isPartitionAdded(TopicPartition partition) {
         return partitionsInTransaction.contains(partition);
@@ -675,7 +695,7 @@ public class TransactionManager {
                 || exception instanceof UnsupportedVersionException) {
             transitionToFatalError(exception);
         } else if (isTransactional()) {
-            if (canTriggerEpochBump() && !isCompleting()) {
+            if (needToTriggerEpochBumpFromClient() && !isCompleting()) {
                 clientSideEpochBumpTriggerRequired = true;
             }
             transitionToAbortableError(exception);
@@ -760,15 +780,11 @@ public class TransactionManager {
                         // For the transactional producer, we bump the epoch if possible, otherwise we transition to a fatal error
                         String unackedMessagesErr = "The client hasn't received acknowledgment for some previously " +
                                 "sent messages and can no longer retry them. ";
-                        if (canTriggerEpochBump()) {
-                            clientSideEpochBumpTriggerRequired = true;
-                            KafkaException exception = new KafkaException(unackedMessagesErr + "It is safe to abort " +
-                                    "the transaction and continue.");
-                            transitionToAbortableError(exception);
-                        } else {
-                            KafkaException exception = new KafkaException(unackedMessagesErr + "It isn't safe to continue.");
-                            transitionToFatalError(exception);
-                        }
+                        KafkaException abortableException = new KafkaException(unackedMessagesErr + "It is safe to abort " +
+                                "the transaction and continue.");
+                        KafkaException fatalException = new KafkaException(unackedMessagesErr + "It isn't safe to continue.");
+
+                        transitionToAbortableErrorOrFatalError(abortableException, fatalException);
                     } else {
                         // For the idempotent producer, bump the epoch
                         log.info("No inflight batches remaining for {}, last ack'd sequence for partition is {}, next sequence is {}. " +
@@ -1188,14 +1204,25 @@ public class TransactionManager {
      * @return true if a client-triggered epoch bump is allowed, otherwise false.
      */
     // package-private for testing
-    boolean canTriggerEpochBump() {
-        if (!coordinatorSupportsBumpingEpoch) {
-            return false;
-        }
-        // If coordinator supports epoch bumping and TransactionsV2 is disabled,
-        // the client can trigger the bump manually via an initProducerId request.
-        // Set clientSideEpochBumpTriggerRequired = true to trigger the same;
-        return !isTransactionV2Enabled;
+    boolean needToTriggerEpochBumpFromClient() {
+        return coordinatorSupportsBumpingEpoch && !isTransactionV2Enabled;
+    }
+
+    /**
+     * Determines if the coordinator can handle an abortable error.
+     * Recovering from an abortable error requires an epoch bump which can be triggered by the client
+     * or automatically taken care of at the end of every transaction (Transaction V2).
+     * Use <code>needToTriggerEpochBumpFromClient</code> to check whether the epoch bump needs to be triggered
+     * manually.
+     *
+     * <b>NOTE:</b>
+     * This method should only be used for transactional producers.
+     * For non-transactional producers epoch bumping is always allowed.
+     *
+     * @return true if an abortable error can be handled, otherwise false.
+     */
+    boolean canHandleAbortableError() {
+        return coordinatorSupportsBumpingEpoch || isTransactionV2Enabled;
     }
 
     private void completeTransaction() {
@@ -1248,10 +1275,9 @@ public class TransactionManager {
          * @param e the error to determine as either abortable or fatal.
          */
         void abortableErrorIfPossible(RuntimeException e) {
-            if (isTransactionV2Enabled) {
-                abortableError(e);
-            } else if (canTriggerEpochBump()) {
-                clientSideEpochBumpTriggerRequired = true;
+            if (canHandleAbortableError()) {
+                if (needToTriggerEpochBumpFromClient())
+                    clientSideEpochBumpTriggerRequired = true;
                 abortableError(e);
             } else {
                 fatalError(e);

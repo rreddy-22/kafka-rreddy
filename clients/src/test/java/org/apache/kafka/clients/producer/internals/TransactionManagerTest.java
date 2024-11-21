@@ -3019,7 +3019,7 @@ public class TransactionManagerTest {
         transactionManager.maybeResolveSequences();
 
         // Verify the type of error state the transaction is in.
-        if (transactionManager.isTransactionV2Enabled() || transactionManager.canTriggerEpochBump()) {
+        if (transactionManager.isTransactionV2Enabled() || transactionManager.needToTriggerEpochBumpFromClient()) {
             // Expected to throw an abortable error when epoch bumping is allowed
             assertTrue(transactionManager.hasAbortableError());
         } else {
@@ -3554,13 +3554,13 @@ public class TransactionManagerTest {
     }
 
     @Test
-    public void testCanTriggerEpochBumpDuringCoordinatorDisconnect() {
+    public void testNeedToTriggerEpochBumpFromClientDuringCoordinatorDisconnect() {
         doInitTransactions(0, (short) 0);
         runUntil(() -> transactionManager.coordinator(CoordinatorType.TRANSACTION) != null);
-        assertTrue(transactionManager.canTriggerEpochBump());
+        assertTrue(transactionManager.needToTriggerEpochBumpFromClient());
 
         apiVersions.remove(transactionManager.coordinator(CoordinatorType.TRANSACTION).idString());
-        assertTrue(transactionManager.canTriggerEpochBump());
+        assertTrue(transactionManager.needToTriggerEpochBumpFromClient());
     }
 
     @ParameterizedTest
