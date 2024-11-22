@@ -191,7 +191,7 @@ public class TransactionManager {
     private volatile RuntimeException lastError = null;
     private volatile ProducerIdAndEpoch producerIdAndEpoch;
     private volatile boolean transactionStarted = false;
-    private volatile boolean clientSideEpochBumpTriggerRequired = false;
+    private volatile boolean clientSideEpochBumpRequired = false;
     private volatile long latestFinalizedFeaturesEpoch = -1;
     private volatile boolean isTransactionV2Enabled = false;
 
@@ -351,7 +351,7 @@ public class TransactionManager {
         enqueueRequest(handler);
 
         // If an epoch bump is required for recovery, initialize the transaction after completing the EndTxn request.
-        if (clientSideEpochBumpTriggerRequired) {
+        if (clientSideEpochBumpRequired) {
             return initializeTransactions(this.producerIdAndEpoch);
         }
 
@@ -490,7 +490,7 @@ public class TransactionManager {
     ) {
         if (canHandleAbortableError()) {
             if (needToTriggerEpochBumpFromClient())
-                clientSideEpochBumpTriggerRequired = true;
+                clientSideEpochBumpRequired = true;
             transitionToAbortableError(abortableException);
         } else {
             transitionToFatalError(fatalException);
@@ -565,7 +565,7 @@ public class TransactionManager {
     }
 
     synchronized void requestIdempotentEpochBumpForPartition(TopicPartition tp) {
-        clientSideEpochBumpTriggerRequired = true;
+        clientSideEpochBumpRequired = true;
         this.partitionsToRewriteSequences.add(tp);
     }
 
@@ -584,12 +584,12 @@ public class TransactionManager {
         }
         this.partitionsToRewriteSequences.clear();
 
-        clientSideEpochBumpTriggerRequired = false;
+        clientSideEpochBumpRequired = false;
     }
 
     synchronized void bumpIdempotentEpochAndResetIdIfNeeded() {
         if (!isTransactional()) {
-            if (clientSideEpochBumpTriggerRequired) {
+            if (clientSideEpochBumpRequired) {
                 bumpIdempotentProducerEpoch();
             }
             if (currentState != State.INITIALIZING && !hasProducerId()) {
@@ -696,7 +696,7 @@ public class TransactionManager {
             transitionToFatalError(exception);
         } else if (isTransactional()) {
             if (needToTriggerEpochBumpFromClient() && !isCompleting()) {
-                clientSideEpochBumpTriggerRequired = true;
+                clientSideEpochBumpRequired = true;
             }
             transitionToAbortableError(exception);
         }
@@ -1217,7 +1217,7 @@ public class TransactionManager {
      *
      * <b>NOTE:</b>
      * This method should only be used for transactional producers.
-     * For non-transactional producers epoch bumping is always allowed.
+     * There is no concept of abortable errors for idempotent producers.
      *
      * @return true if an abortable error can be handled, otherwise false.
      */
@@ -1226,13 +1226,13 @@ public class TransactionManager {
     }
 
     private void completeTransaction() {
-        if (clientSideEpochBumpTriggerRequired) {
+        if (clientSideEpochBumpRequired) {
             transitionTo(State.INITIALIZING);
         } else {
             transitionTo(State.READY);
         }
         lastError = null;
-        clientSideEpochBumpTriggerRequired = false;
+        clientSideEpochBumpRequired = false;
         transactionStarted = false;
         newPartitionsInTransaction.clear();
         pendingPartitionsInTransaction.clear();
@@ -1277,7 +1277,7 @@ public class TransactionManager {
         void abortableErrorIfPossible(RuntimeException e) {
             if (canHandleAbortableError()) {
                 if (needToTriggerEpochBumpFromClient())
-                    clientSideEpochBumpTriggerRequired = true;
+                    clientSideEpochBumpRequired = true;
                 abortableError(e);
             } else {
                 fatalError(e);
