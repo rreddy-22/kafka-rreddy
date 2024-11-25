@@ -564,6 +564,9 @@ public class TransactionManager {
         this.partitionsWithUnresolvedSequences.clear();
     }
 
+    /**
+     * This method is used to trigger an epoch bump for non-transactional idempotent producers.
+     */
     synchronized void requestIdempotentEpochBumpForPartition(TopicPartition tp) {
         clientSideEpochBumpRequired = true;
         this.partitionsToRewriteSequences.add(tp);
